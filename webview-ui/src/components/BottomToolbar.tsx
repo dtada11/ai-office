@@ -100,11 +100,11 @@ export function BottomToolbar({
                 : 'bg-accent hover:bg-accent-bright'
             }
           >
-            + Agent
+            + 에이전트
           </Button>
           <Dropdown isOpen={isBypassMenuOpen}>
             <DropdownItem onClick={() => handleBypassSelect(true)}>
-              Skip permissions mode <span className="text-2xs text-warning">⚠</span>
+              권한 확인 생략 모드 <span className="text-2xs text-warning">⚠</span>
             </DropdownItem>
           </Dropdown>
           <Dropdown isOpen={isFolderPickerOpen} className="min-w-128">
@@ -123,16 +123,16 @@ export function BottomToolbar({
       <Button
         variant={isEditMode ? 'active' : 'default'}
         onClick={onToggleEditMode}
-        title="Edit office layout"
+        title="사무실 꾸미기"
       >
-        Layout
+        꾸미기
       </Button>
       <Button
         variant={isSettingsOpen ? 'active' : 'default'}
         onClick={onToggleSettings}
-        title="Settings"
+        title="설정"
       >
-        Settings
+        설정
       </Button>
     </div>
   );

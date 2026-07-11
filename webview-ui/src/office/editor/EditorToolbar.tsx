@@ -127,41 +127,41 @@ export function EditorToolbar({
           variant={isFurnitureActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.FURNITURE_PLACE)}
-          title="Place furniture"
+          title="가구 배치"
         >
-          Furniture
+          가구
         </Button>
         <Button
           variant={isFloorActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.TILE_PAINT)}
-          title="Paint floor tiles"
+          title="바닥 타일 칠하기"
         >
-          Floor
+          바닥
         </Button>
         <Button
           variant={isWallActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.WALL_PAINT)}
-          title="Paint walls (click to toggle)"
+          title="벽 칠하기 (클릭으로 추가/제거)"
         >
-          Wall
+          벽
         </Button>
         <Button
           variant={isEraseActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.ERASE)}
-          title="Erase tiles to void"
+          title="타일 지우기"
         >
-          Erase
+          지우개
         </Button>
         <Button
           variant={isPetsActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.PETS)}
-          title="Place pets"
+          title="펫 배치"
         >
-          Pets
+          펫
         </Button>
       </div>
 

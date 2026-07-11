@@ -27,7 +27,13 @@ import { CharacterState, TILE_SIZE } from '../types.js';
 // shows ONLY the checkmark (the label falls through to its normal idle text);
 // going idle waiting on the user (Notification(idle_prompt)) additionally
 // surfaces this label. Driven by Character.waitingAwaitingInput.
-const WAITING_INPUT_ACTIVITY_TEXT = 'Waiting for input';
+const WAITING_INPUT_ACTIVITY_TEXT = '입력 기다리는 중';
+
+// "Subtask:" is a protocol marker set by the server (parsed elsewhere via
+// startsWith), so it stays English on the wire — swap it only for display.
+function koreanizeStatus(status: string): string {
+  return status.replace(/^Subtask:/, '하위작업:');
+}
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -49,7 +55,7 @@ function getActivityText(
   bubbleType: 'permission' | 'waiting' | null,
   waitingAwaitingInput: boolean,
 ): string {
-  if (bubbleType === 'permission') return 'Needs approval';
+  if (bubbleType === 'permission') return '승인 필요';
   // Only the idle case ("Waiting for input") gets a dedicated label. A finished
   // turn (Stop, waitingAwaitingInput=false) falls through so the checkmark alone
   // signals "done", same as the original behavior.
@@ -60,17 +66,17 @@ function getActivityText(
     // Find the latest non-done tool
     const activeTool = [...tools].reverse().find((t) => !t.done);
     if (activeTool) {
-      if (activeTool.permissionWait) return 'Needs approval';
-      return activeTool.status;
+      if (activeTool.permissionWait) return '승인 필요';
+      return koreanizeStatus(activeTool.status);
     }
     // All tools done but agent still active (mid-turn) — keep showing last tool status
     if (isActive) {
       const lastTool = tools[tools.length - 1];
-      if (lastTool) return lastTool.status;
+      if (lastTool) return koreanizeStatus(lastTool.status);
     }
   }
 
-  return 'Idle';
+  return '쉬는 중';
 }
 
 function getFuelColor(ratio: number): string {
@@ -168,10 +174,10 @@ export function ToolOverlay({
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
         } else if (isSub) {
           if (subHasPermission) {
-            activityText = 'Needs approval';
+            activityText = '승인 필요';
           } else {
             const sub = subagentCharacters.find((s) => s.id === id);
-            activityText = sub ? sub.label : 'Subtask';
+            activityText = sub ? sub.label : '하위작업';
           }
         } else {
           activityText = getActivityText(

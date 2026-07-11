@@ -37,14 +37,14 @@ export function SettingsModal({
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Settings">
+    <Modal isOpen={isOpen} onClose={onClose} title="설정">
       <MenuItem
         onClick={() => {
           transport.send({ type: 'openSessionsFolder' });
           onClose();
         }}
       >
-        Open Sessions Folder
+        세션 폴더 열기
       </MenuItem>
       <MenuItem
         onClick={() => {
@@ -52,7 +52,7 @@ export function SettingsModal({
           onClose();
         }}
       >
-        Export Layout
+        레이아웃 내보내기
       </MenuItem>
       <MenuItem
         onClick={() => {
@@ -60,7 +60,7 @@ export function SettingsModal({
           onClose();
         }}
       >
-        Import Layout
+        레이아웃 가져오기
       </MenuItem>
       <MenuItem
         onClick={() => {
@@ -68,7 +68,7 @@ export function SettingsModal({
           onClose();
         }}
       >
-        Add Asset Directory
+        에셋 폴더 추가
       </MenuItem>
       {externalAssetDirectories.map((dir) => (
         <div key={dir} className="flex items-center justify-between py-4 px-10 gap-8">
@@ -89,7 +89,7 @@ export function SettingsModal({
         </div>
       ))}
       <Checkbox
-        label="Sound Notifications"
+        label="알림음"
         checked={soundLocal}
         onChange={() => {
           const newVal = !isSoundEnabled();
@@ -99,21 +99,17 @@ export function SettingsModal({
         }}
       />
       <Checkbox
-        label="Watch All Sessions"
+        label="모든 세션 감시"
         checked={watchAllSessions}
         onChange={onToggleWatchAllSessions}
       />
+      <Checkbox label="즉시 감지 (Hooks)" checked={hooksEnabled} onChange={onToggleHooksEnabled} />
       <Checkbox
-        label="Instant Detection (Hooks)"
-        checked={hooksEnabled}
-        onChange={onToggleHooksEnabled}
-      />
-      <Checkbox
-        label="Always Show Labels"
+        label="라벨 항상 표시"
         checked={alwaysShowOverlay}
         onChange={onToggleAlwaysShowOverlay}
       />
-      <Checkbox label="Debug View" checked={isDebugMode} onChange={onToggleDebugMode} />
+      <Checkbox label="디버그 보기" checked={isDebugMode} onChange={onToggleDebugMode} />
     </Modal>
   );
 }

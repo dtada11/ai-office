@@ -21,33 +21,33 @@ export function EditActionBar({ editor, editorState: es }: EditActionBarProps) {
         variant={undoDisabled ? 'disabled' : 'default'}
         size="md"
         onClick={undoDisabled ? undefined : editor.handleUndo}
-        title="Undo (Ctrl+Z)"
+        title="되돌리기 (Ctrl+Z)"
       >
-        Undo
+        되돌리기
       </Button>
       <Button
         variant={redoDisabled ? 'disabled' : 'default'}
         size="md"
         onClick={redoDisabled ? undefined : editor.handleRedo}
-        title="Redo (Ctrl+Y)"
+        title="다시 실행 (Ctrl+Y)"
       >
-        Redo
+        다시 실행
       </Button>
-      <Button variant="default" size="md" onClick={editor.handleSave} title="Save layout">
-        Save
+      <Button variant="default" size="md" onClick={editor.handleSave} title="레이아웃 저장">
+        저장
       </Button>
       {!showResetConfirm ? (
         <Button
           variant="default"
           size="md"
           onClick={() => setShowResetConfirm(true)}
-          title="Reset to last saved layout"
+          title="마지막 저장 상태로 되돌리기"
         >
-          Reset
+          초기화
         </Button>
       ) : (
         <div className="flex gap-4 items-center">
-          <span className="text-base text-reset-text">Reset?</span>
+          <span className="text-base text-reset-text">초기화할까요?</span>
           <Button
             variant="default"
             size="md"
@@ -57,10 +57,10 @@ export function EditActionBar({ editor, editorState: es }: EditActionBarProps) {
               editor.handleReset();
             }}
           >
-            Yes
+            예
           </Button>
           <Button variant="default" size="md" onClick={() => setShowResetConfirm(false)}>
-            No
+            아니오
           </Button>
         </div>
       )}

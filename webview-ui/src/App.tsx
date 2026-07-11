@@ -278,7 +278,7 @@ function App() {
       {/* Hooks first-run tooltip */}
       {!hooksInfoShown && !hooksTooltipDismissed && (
         <Tooltip
-          title="Instant Detection Active"
+          title="즉시 감지 활성화됨"
           position="top-right"
           onDismiss={() => {
             setHooksTooltipDismissed(true);
@@ -286,7 +286,7 @@ function App() {
           }}
         >
           <span className="text-sm text-text leading-none">
-            Your agents now respond in real-time.{' '}
+            에이전트가 이제 실시간으로 반응합니다.{' '}
             <span
               className="text-accent cursor-pointer underline"
               onClick={() => {
@@ -295,7 +295,7 @@ function App() {
                 transport.send({ type: 'setHooksInfoShown' });
               }}
             >
-              View more
+              자세히
             </span>
           </span>
         </Tooltip>
@@ -305,30 +305,30 @@ function App() {
       <Modal
         isOpen={isHooksInfoOpen}
         onClose={() => setIsHooksInfoOpen(false)}
-        title="Instant Detection is ON"
+        title="즉시 감지가 켜져 있어요"
         zIndex={52}
       >
         <div className="text-base text-text px-10" style={{ lineHeight: 1.4 }}>
-          <p className="mb-8">Your Pixel Agents office now reacts in real-time:</p>
+          <p className="mb-8">픽셀 에이전트 사무실이 이제 실시간으로 반응합니다:</p>
           <ul className="mb-8 pl-18 list-disc m-0">
-            <li className="text-sm mb-2">Permission prompts appear instantly</li>
-            <li className="text-sm mb-2">Turn completions detected the moment they happen</li>
-            <li className="text-sm mb-2">Sound notifications play immediately</li>
+            <li className="text-sm mb-2">권한 요청이 즉시 표시됩니다</li>
+            <li className="text-sm mb-2">턴 완료가 발생하는 순간 감지됩니다</li>
+            <li className="text-sm mb-2">알림음이 바로 재생됩니다</li>
           </ul>
           <p className="mb-12 text-text-muted">
-            This works through Claude Code Hooks, small event listeners that notify Pixel Agents
-            whenever something happens in your Claude sessions.
+            Claude Code Hooks(세션에서 무슨 일이 생길 때마다 픽셀 에이전트에 알려주는 작은 이벤트
+            리스너)를 통해 동작합니다.
           </p>
           <div className="text-center">
             <button
               onClick={() => setIsHooksInfoOpen(false)}
               className="py-4 px-20 text-lg bg-accent text-white border-2 border-accent rounded-none cursor-pointer shadow-pixel"
             >
-              Got it
+              확인
             </button>
           </div>
           <p className="mt-8 text-xs text-text-muted text-center">
-            To disable, go to Settings {'>'} Instant Detection
+            끄려면 설정 {'>'} 즉시 감지에서 해제하세요
           </p>
         </div>
       </Modal>

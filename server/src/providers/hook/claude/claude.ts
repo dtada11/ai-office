@@ -23,46 +23,48 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
   const base = (p: unknown) => (typeof p === 'string' ? path.basename(p) : '');
   switch (toolName) {
     case 'Read':
-      return `Reading ${base(inp.file_path)}`;
+      return `${base(inp.file_path)} \uc77d\ub294 \uc911`;
     case 'Edit':
-      return `Editing ${base(inp.file_path)}`;
+      return `${base(inp.file_path)} \uc218\uc815 \uc911`;
     case 'Write':
-      return `Writing ${base(inp.file_path)}`;
+      return `${base(inp.file_path)} \uc791\uc131 \uc911`;
     case 'Bash': {
       const cmd = (inp.command as string) || '';
-      return `Running: ${cmd.length > BASH_COMMAND_DISPLAY_MAX_LENGTH ? cmd.slice(0, BASH_COMMAND_DISPLAY_MAX_LENGTH) + '\u2026' : cmd}`;
+      return `\uc2e4\ud589 \uc911: ${cmd.length > BASH_COMMAND_DISPLAY_MAX_LENGTH ? cmd.slice(0, BASH_COMMAND_DISPLAY_MAX_LENGTH) + '\u2026' : cmd}`;
     }
     case 'Glob':
-      return 'Searching files';
+      return '\ud30c\uc77c \ucc3e\ub294 \uc911';
     case 'Grep':
-      return 'Searching code';
+      return '\ucf54\ub4dc \uac80\uc0c9 \uc911';
     case 'WebFetch':
-      return 'Fetching web content';
+      return '\uc6f9 \ud398\uc774\uc9c0 \uac00\uc838\uc624\ub294 \uc911';
     case 'WebSearch':
-      return 'Searching the web';
+      return '\uc6f9 \uac80\uc0c9 \uc911';
     case 'Task':
     case 'Agent': {
       const desc = typeof inp.description === 'string' ? inp.description : '';
       return desc
         ? `Subtask: ${desc.length > TASK_DESCRIPTION_DISPLAY_MAX_LENGTH ? desc.slice(0, TASK_DESCRIPTION_DISPLAY_MAX_LENGTH) + '\u2026' : desc}`
-        : 'Running subtask';
+        : '\ud558\uc704\uc791\uc5c5 \uc2e4\ud589 \uc911';
     }
     case 'AskUserQuestion':
-      return 'Waiting for your answer';
+      return '\ub2f5\ubcc0 \uae30\ub2e4\ub9ac\ub294 \uc911';
     case 'EnterPlanMode':
-      return 'Planning';
+      return '\uacc4\ud68d \uc138\uc6b0\ub294 \uc911';
     case 'NotebookEdit':
-      return 'Editing notebook';
+      return '\ub178\ud2b8\ubd81 \uc218\uc815 \uc911';
     case 'TeamCreate': {
       const teamName = typeof inp.team_name === 'string' ? inp.team_name : '';
-      return teamName ? `Creating team: ${teamName}` : 'Creating team';
+      return teamName
+        ? `\ud300 \ub9cc\ub4dc\ub294 \uc911: ${teamName}`
+        : '\ud300 \ub9cc\ub4dc\ub294 \uc911';
     }
     case 'SendMessage': {
       const recipient = typeof inp.recipient === 'string' ? inp.recipient : '';
-      return recipient ? `-> ${recipient}` : 'Sending message';
+      return recipient ? `-> ${recipient}` : '\uba54\uc2dc\uc9c0 \ubcf4\ub0b4\ub294 \uc911';
     }
     default:
-      return `Using ${toolName}`;
+      return `${toolName} \uc0ac\uc6a9 \uc911`;
   }
 }
 
