@@ -6,6 +6,7 @@ import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
+import { killShellCommand, runShellCommand } from './shellRunner.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -127,6 +128,19 @@ export function handleClientMessage(
       send({ type: 'externalAssetDirectoriesUpdated', dirs: cfg.externalAssetDirectories });
       break;
     }
+
+    case 'runShellCommand':
+      runShellCommand(
+        store,
+        msg.execId as string,
+        msg.command as string,
+        msg.cwd as string | undefined,
+      );
+      break;
+
+    case 'killShellCommand':
+      killShellCommand(store, msg.execId as string);
+      break;
 
     case 'removeExternalAssetDirectory': {
       const removePath = msg.path as string | undefined;

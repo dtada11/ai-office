@@ -100,6 +100,9 @@ components:
         - $ref: '#/components/schemas/AgentTeamInfo'
         - $ref: '#/components/schemas/AgentTokenUsage'
         - $ref: '#/components/schemas/PlanUsage'
+        # Shell bridge
+        - $ref: '#/components/schemas/ShellOutput'
+        - $ref: '#/components/schemas/ShellExit'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -137,6 +140,8 @@ components:
         - $ref: '#/components/schemas/AddExternalAssetDirectory'
         - $ref: '#/components/schemas/RemoveExternalAssetDirectory'
         - $ref: '#/components/schemas/RequestDiagnostics'
+        - $ref: '#/components/schemas/RunShellCommand'
+        - $ref: '#/components/schemas/KillShellCommand'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -457,6 +462,43 @@ components:
         calibrated:
           type: boolean
           description: False when no snapshot file exists (percentages are uncalibrated raw estimates).
+
+    ShellStreamName:
+      type: string
+      enum: [stdout, stderr, system]
+
+    ShellOutput:
+      description: |
+        One chunk of output from a shell command started via RunShellCommand.
+        `system` stream carries bridge-level notices (timeout, kill, spawn errors).
+      type: object
+      additionalProperties: false
+      required: [type, execId, stream, data]
+      properties:
+        type:
+          const: shellOutput
+        execId:
+          type: string
+        stream:
+          $ref: '#/components/schemas/ShellStreamName'
+        data:
+          type: string
+
+    ShellExit:
+      description: Command finished (or failed to spawn). Terminal message for an execId.
+      type: object
+      additionalProperties: false
+      required: [type, execId]
+      properties:
+        type:
+          const: shellExit
+        execId:
+          type: string
+        exitCode:
+          type: integer
+        error:
+          type: string
+          description: Present when the process could not be spawned or was killed.
 
     LayoutLoaded:
       description: |
@@ -844,6 +886,37 @@ components:
           const: setWatchAllSessions
         enabled:
           type: boolean
+
+    RunShellCommand:
+      description: |
+        Execute a PowerShell command on the server host (standalone mode only).
+        The server streams ShellOutput chunks and always finishes with ShellExit.
+        The server binds to 127.0.0.1, so only local clients can reach this.
+      type: object
+      additionalProperties: false
+      required: [type, execId, command]
+      properties:
+        type:
+          const: runShellCommand
+        execId:
+          type: string
+          description: Client-generated id correlating ShellOutput/ShellExit messages.
+        command:
+          type: string
+        cwd:
+          type: string
+          description: Working directory. Defaults to the server process cwd.
+
+    KillShellCommand:
+      description: Terminate a running shell command by execId.
+      type: object
+      additionalProperties: false
+      required: [type, execId]
+      properties:
+        type:
+          const: killShellCommand
+        execId:
+          type: string
 
     ExportLayout:
       description: Trigger layout export via host-native save dialog.

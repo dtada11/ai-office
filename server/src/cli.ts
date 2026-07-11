@@ -25,6 +25,7 @@ import { FileStateAdapter } from './fileStateAdapter.js';
 import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
+import { disposeShellRunner } from './shellRunner.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -175,6 +176,7 @@ async function main(): Promise<void> {
     function shutdown(): void {
       console.log('\nShutting down...');
       clearInterval(planUsageInterval);
+      disposeShellRunner();
       runtime.dispose();
       server.stop();
       process.exit(0);

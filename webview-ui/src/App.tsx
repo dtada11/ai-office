@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { ChatPanel } from './components/ChatPanel.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
@@ -344,6 +345,8 @@ function App() {
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         workspaceFolders={workspaceFolders}
       />
+
+      {!editor.isEditMode && <ChatPanel />}
 
       {!editor.isEditMode && (
         <TokenGauge

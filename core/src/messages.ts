@@ -26,6 +26,8 @@ export type ServerMessage =
   | AgentTeamInfo
   | AgentTokenUsage
   | PlanUsage
+  | ShellOutput
+  | ShellExit
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -56,7 +58,9 @@ export type ClientMessage =
   | OpenSessionsFolder
   | AddExternalAssetDirectory
   | RemoveExternalAssetDirectory
-  | RequestDiagnostics;
+  | RequestDiagnostics
+  | RunShellCommand
+  | KillShellCommand;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -190,6 +194,22 @@ export interface PlanUsage {
   weeklyModelPercent: number;
   weeklyResetsAt?: string;
   calibrated: boolean;
+}
+
+export interface ShellOutput {
+  type: 'shellOutput';
+  execId: string;
+  stream: ShellStreamName;
+  data: string;
+}
+
+export type ShellStreamName = 'stdout' | 'stderr' | 'system';
+
+export interface ShellExit {
+  type: 'shellExit';
+  execId: string;
+  exitCode?: number;
+  error?: string;
 }
 
 export interface LayoutLoaded {
@@ -387,4 +407,16 @@ export interface RemoveExternalAssetDirectory {
 
 export interface RequestDiagnostics {
   type: 'requestDiagnostics';
+}
+
+export interface RunShellCommand {
+  type: 'runShellCommand';
+  execId: string;
+  command: string;
+  cwd?: string;
+}
+
+export interface KillShellCommand {
+  type: 'killShellCommand';
+  execId: string;
 }
