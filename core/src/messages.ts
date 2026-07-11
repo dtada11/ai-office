@@ -25,6 +25,7 @@ export type ServerMessage =
   | SubagentToolPermission
   | AgentTeamInfo
   | AgentTokenUsage
+  | PlanUsage
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -179,6 +180,16 @@ export interface AgentTokenUsage {
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
+}
+
+export interface PlanUsage {
+  type: 'planUsage';
+  sessionPercent: number;
+  sessionResetsAt?: string;
+  weeklyAllPercent: number;
+  weeklyModelPercent: number;
+  weeklyResetsAt?: string;
+  calibrated: boolean;
 }
 
 export interface LayoutLoaded {

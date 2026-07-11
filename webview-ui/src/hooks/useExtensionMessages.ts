@@ -73,6 +73,7 @@ interface ExtensionMessageState {
   setHooksEnabled: (v: boolean) => void;
   hooksInfoShown: boolean;
   agentTokenInfo: Record<number, AgentTokenInfo>;
+  planUsage: PlanUsageInfo | null;
 }
 
 export interface AgentTokenInfo {
@@ -81,6 +82,15 @@ export interface AgentTokenInfo {
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
+}
+
+export interface PlanUsageInfo {
+  sessionPercent: number;
+  sessionResetsAt?: string;
+  weeklyAllPercent: number;
+  weeklyModelPercent: number;
+  weeklyResetsAt?: string;
+  calibrated: boolean;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -119,6 +129,7 @@ export function useExtensionMessages(
   const [hooksEnabled, setHooksEnabled] = useState(true);
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
   const [agentTokenInfo, setAgentTokenInfo] = useState<Record<number, AgentTokenInfo>>({});
+  const [planUsage, setPlanUsage] = useState<PlanUsageInfo | null>(null);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -580,6 +591,15 @@ export function useExtensionMessages(
             contextLimit: msg.contextLimit as number | undefined,
           },
         }));
+      } else if (msg.type === 'planUsage') {
+        setPlanUsage({
+          sessionPercent: msg.sessionPercent as number,
+          sessionResetsAt: msg.sessionResetsAt as string | undefined,
+          weeklyAllPercent: msg.weeklyAllPercent as number,
+          weeklyModelPercent: msg.weeklyModelPercent as number,
+          weeklyResetsAt: msg.weeklyResetsAt as string | undefined,
+          calibrated: msg.calibrated as boolean,
+        });
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -609,5 +629,6 @@ export function useExtensionMessages(
     setHooksEnabled,
     hooksInfoShown,
     agentTokenInfo,
+    planUsage,
   };
 }

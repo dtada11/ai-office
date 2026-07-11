@@ -9,7 +9,7 @@ import {
   TOKEN_DANGER_THRESHOLD,
   TOKEN_WARN_THRESHOLD,
 } from '../constants.js';
-import type { AgentTokenInfo } from '../hooks/useExtensionMessages.js';
+import type { AgentTokenInfo, PlanUsageInfo } from '../hooks/useExtensionMessages.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
 
@@ -51,19 +51,58 @@ function fmt(n: number): string {
   return String(n);
 }
 
+/** HH:MM local time of an ISO timestamp, for reset labels. */
+function resetLabel(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+interface PlanBarProps {
+  label: string;
+  percent: number;
+  suffix?: string;
+}
+
+function PlanBar({ label, percent, suffix }: PlanBarProps) {
+  const ratio = Math.min(1, percent / 100);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-8">
+        <span className="text-xs text-text-muted whitespace-nowrap">{label}</span>
+        <span className="text-xs whitespace-nowrap">
+          {percent.toFixed(percent >= 10 ? 0 : 1)}%{suffix ? ` · ${suffix}` : ''}
+        </span>
+      </div>
+      <div className="border-2 border-border rounded-none h-8 overflow-hidden">
+        <div
+          className="h-full"
+          style={{ width: `${Math.round(ratio * 100)}%`, backgroundColor: fuelColor(ratio) }}
+          data-testid={`plan-gauge-bar-${label}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 interface TokenGaugeProps {
   agents: number[];
   selectedAgent: number | null;
   agentTokenInfo: Record<number, AgentTokenInfo>;
+  planUsage: PlanUsageInfo | null;
 }
 
-export function TokenGauge({ agents, selectedAgent, agentTokenInfo }: TokenGaugeProps) {
+export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
 
   const agentId = selectedAgent ?? agents[0];
-  if (agentId === undefined) return null;
-  const info = agentTokenInfo[agentId];
+  // Plan gauges are account-wide, so keep the panel visible even with no agents.
+  if (agentId === undefined && !planUsage) return null;
+  const info = agentId !== undefined ? agentTokenInfo[agentId] : undefined;
 
   const used = info?.contextTokens ?? 0;
   const limit = info?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
@@ -114,6 +153,26 @@ export function TokenGauge({ agents, selectedAgent, agentTokenInfo }: TokenGauge
       <span className="text-xs whitespace-nowrap">
         컨텍스트 {fmt(used)} 사용 · {fmt(remaining)} 남음 ({fmt(limit)} 중)
       </span>
+      {planUsage && (
+        <div className="flex flex-col gap-4 border-t-2 border-border pt-4 mt-2">
+          <PlanBar
+            label="세션"
+            percent={planUsage.sessionPercent}
+            suffix={
+              planUsage.sessionResetsAt
+                ? `${resetLabel(planUsage.sessionResetsAt)} 리셋`
+                : undefined
+            }
+          />
+          <PlanBar label="주간 전체" percent={planUsage.weeklyAllPercent} />
+          <PlanBar label="주간 Fable" percent={planUsage.weeklyModelPercent} />
+          {!planUsage.calibrated && (
+            <span className="text-xs text-text-muted whitespace-nowrap">
+              미보정 추정치 (~/.pixel-agents/plan-usage.json 스냅샷 필요)
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -99,6 +99,7 @@ components:
         # Agent Teams
         - $ref: '#/components/schemas/AgentTeamInfo'
         - $ref: '#/components/schemas/AgentTokenUsage'
+        - $ref: '#/components/schemas/PlanUsage'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -423,6 +424,39 @@ components:
         contextLimit:
           type: integer
           description: Context window for the configured model (1M for "[1m]" variants, else 200k).
+
+    PlanUsage:
+      description: |
+        Estimated Claude plan usage gauges. Percentages are estimated from
+        weighted aggregation of local transcript JSONL usage records
+        (input x1, cache creation x1.25, cache read x0.1, output x5),
+        calibrated against the user snapshot in ~/.pixel-agents/plan-usage.json.
+        Only tokens recorded after each gauge's last reset are counted.
+        Broadcast periodically by the server.
+      type: object
+      additionalProperties: false
+      required: [type, sessionPercent, weeklyAllPercent, weeklyModelPercent, calibrated]
+      properties:
+        type:
+          const: planUsage
+        sessionPercent:
+          type: number
+          description: Estimated 0-100 percent of the 5-hour session limit.
+        sessionResetsAt:
+          type: string
+          description: ISO timestamp when the session gauge resets.
+        weeklyAllPercent:
+          type: number
+          description: Estimated 0-100 percent of the weekly all-model limit.
+        weeklyModelPercent:
+          type: number
+          description: Estimated 0-100 percent of the weekly per-model (Fable) limit.
+        weeklyResetsAt:
+          type: string
+          description: ISO timestamp when both weekly gauges reset.
+        calibrated:
+          type: boolean
+          description: False when no snapshot file exists (percentages are uncalibrated raw estimates).
 
     LayoutLoaded:
       description: |

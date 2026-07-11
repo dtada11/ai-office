@@ -22,6 +22,7 @@ import {
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
@@ -107,7 +108,8 @@ async function main(): Promise<void> {
           `http://127.0.0.1:${currentConfig.port}`,
           currentConfig.token,
         );
-        copyHookScript(distRoot);
+        // copyHookScript expects the package root (it appends dist/hooks itself)
+        copyHookScript(path.resolve(distRoot, '..'));
         console.log('[Pixel Agents] Hooks installed (user toggle)');
       } else {
         await claudeProvider.uninstallHooks();
@@ -135,7 +137,8 @@ async function main(): Promise<void> {
     if (runtime.hooksEnabled.current) {
       try {
         await claudeProvider.installHooks(`http://127.0.0.1:${config.port}`, config.token);
-        copyHookScript(distRoot);
+        // copyHookScript expects the package root (it appends dist/hooks itself)
+        copyHookScript(path.resolve(distRoot, '..'));
         console.log('[Pixel Agents] Hooks installed');
       } catch (err) {
         console.error('[Pixel Agents] Failed to install hooks:', err);
@@ -153,11 +156,25 @@ async function main(): Promise<void> {
       runtime.startStaleCheck();
     }
 
+    // ── Plan usage gauges: scan transcripts + broadcast every minute ──
+    const planTracker = new PlanUsageTracker();
+    const tickPlanUsage = async (): Promise<void> => {
+      try {
+        const msg = await planTracker.tick();
+        store.broadcast(msg as unknown as Record<string, unknown>);
+      } catch (err) {
+        console.error('[Pixel Agents] plan usage tick failed:', err);
+      }
+    };
+    void tickPlanUsage();
+    const planUsageInterval = setInterval(() => void tickPlanUsage(), 60_000);
+
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 
     // ── Graceful shutdown ──
     function shutdown(): void {
       console.log('\nShutting down...');
+      clearInterval(planUsageInterval);
       runtime.dispose();
       server.stop();
       process.exit(0);

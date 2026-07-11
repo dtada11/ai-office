@@ -4,6 +4,7 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import { setConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
+import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
@@ -201,6 +202,10 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
     hooksInfoShown: adapter?.getSetting(KEY_HOOKS_INFO_SHOWN, false) ?? false,
     externalAssetDirectories: cfg.externalAssetDirectories,
   });
+
+  // 4b. Plan usage gauges (latest computed tick, if any — refreshed every minute)
+  const planUsage = getLatestPlanUsage();
+  if (planUsage) send(planUsage as unknown as Record<string, unknown>);
 
   // Sync runtime refs with the persisted settings so scanners behave correctly
   // from the first tick after a server restart.
