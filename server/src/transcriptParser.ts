@@ -2,6 +2,7 @@ const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { getContextLimit } from './claudeSettings.js';
 import { TEXT_IDLE_DELAY_MS, TOOL_DONE_DELAY_MS } from './constants.js';
 import { hasInlineTeammates } from './teamUtils.js';
 import {
@@ -85,7 +86,12 @@ export function processTranscriptLine(
 
     // -- Token usage extraction from assistant records --
     const usage = record.message?.usage as
-      | { input_tokens?: number; output_tokens?: number }
+      | {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        }
       | undefined;
     if (usage) {
       if (typeof usage.input_tokens === 'number') {
@@ -94,11 +100,23 @@ export function processTranscriptLine(
       if (typeof usage.output_tokens === 'number') {
         agent.outputTokens += usage.output_tokens;
       }
+      // Context size of the LATEST request: uncached input + cached prefix + output.
+      const ctx =
+        (usage.input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0) +
+        (usage.output_tokens ?? 0);
+      if (ctx > 0) agent.contextTokens = ctx;
+      const model = record.message?.model;
+      if (typeof model === 'string' && model) agent.model = model;
       agents.broadcast({
         type: 'agentTokenUsage',
         id: agentId,
         inputTokens: agent.inputTokens,
         outputTokens: agent.outputTokens,
+        model: agent.model,
+        contextTokens: agent.contextTokens,
+        contextLimit: getContextLimit(),
       });
     }
 

@@ -7,6 +7,7 @@ import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { TokenGauge } from './components/TokenGauge.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
@@ -81,6 +82,7 @@ function App() {
     hooksEnabled,
     setHooksEnabled,
     hooksInfoShown,
+    agentTokenInfo,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -341,6 +343,10 @@ function App() {
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         workspaceFolders={workspaceFolders}
       />
+
+      {!editor.isEditMode && (
+        <TokenGauge agents={agents} selectedAgent={selectedAgent} agentTokenInfo={agentTokenInfo} />
+      )}
 
       <VersionIndicator
         currentVersion={extensionVersion}

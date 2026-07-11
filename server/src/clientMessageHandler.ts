@@ -1,6 +1,7 @@
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
+import { setConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { claudeProvider } from './providers/index.js';
@@ -100,6 +101,19 @@ export function handleClientMessage(
     case 'setHooksInfoShown':
       adapter?.setSetting(KEY_HOOKS_INFO_SHOWN, true);
       break;
+
+    case 'setClaudeModel': {
+      const model = msg.model as string | undefined;
+      if (model) {
+        const ok = setConfiguredModel(model);
+        console.log(
+          ok
+            ? `[Pixel Agents] Claude model set to ${model} (applies to new sessions)`
+            : `[Pixel Agents] Failed to set Claude model to ${model}`,
+        );
+      }
+      break;
+    }
 
     case 'addExternalAssetDirectory': {
       const newPath = msg.path as string | undefined;

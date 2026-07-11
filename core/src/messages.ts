@@ -49,6 +49,7 @@ export type ClientMessage =
   | SetHooksEnabled
   | SetHooksInfoShown
   | SetWatchAllSessions
+  | SetClaudeModel
   | ExportLayout
   | ImportLayout
   | OpenSessionsFolder
@@ -175,6 +176,9 @@ export interface AgentTokenUsage {
   id: number;
   inputTokens: number;
   outputTokens: number;
+  model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
 }
 
 export interface LayoutLoaded {
@@ -342,6 +346,11 @@ export interface SetHooksInfoShown {
 export interface SetWatchAllSessions {
   type: 'setWatchAllSessions';
   enabled: boolean;
+}
+
+export interface SetClaudeModel {
+  type: 'setClaudeModel';
+  model: string;
 }
 
 export interface ExportLayout {

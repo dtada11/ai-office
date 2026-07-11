@@ -50,6 +50,10 @@ export interface AgentState {
   // -- Token tracking --
   inputTokens: number;
   outputTokens: number;
+  /** Model id from the latest assistant record (e.g. claude-fable-5) */
+  model?: string;
+  /** Latest request context size (input + cache read/creation + output) */
+  contextTokens?: number;
 
   // -- Agent Teams --
   teamName?: string;

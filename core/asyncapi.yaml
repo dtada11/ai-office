@@ -129,6 +129,7 @@ components:
         - $ref: '#/components/schemas/SetHooksEnabled'
         - $ref: '#/components/schemas/SetHooksInfoShown'
         - $ref: '#/components/schemas/SetWatchAllSessions'
+        - $ref: '#/components/schemas/SetClaudeModel'
         - $ref: '#/components/schemas/ExportLayout'
         - $ref: '#/components/schemas/ImportLayout'
         - $ref: '#/components/schemas/OpenSessionsFolder'
@@ -413,6 +414,15 @@ components:
           type: integer
         outputTokens:
           type: integer
+        model:
+          type: string
+          description: Model id from the latest assistant record (e.g. claude-fable-5).
+        contextTokens:
+          type: integer
+          description: Latest request context size (input + cache read/creation + output).
+        contextLimit:
+          type: integer
+          description: Context window for the configured model (1M for "[1m]" variants, else 200k).
 
     LayoutLoaded:
       description: |
@@ -738,6 +748,20 @@ components:
           const: setSoundEnabled
         enabled:
           type: boolean
+
+    SetClaudeModel:
+      description: |
+        Write the given model id into ~/.claude/settings.json ("model" key).
+        Applies to NEW Claude Code sessions only — a running session cannot be
+        switched from outside.
+      type: object
+      additionalProperties: false
+      required: [type, model]
+      properties:
+        type:
+          const: setClaudeModel
+        model:
+          type: string
 
     SetLastSeenVersion:
       type: object

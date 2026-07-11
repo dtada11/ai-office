@@ -72,6 +72,15 @@ interface ExtensionMessageState {
   hooksEnabled: boolean;
   setHooksEnabled: (v: boolean) => void;
   hooksInfoShown: boolean;
+  agentTokenInfo: Record<number, AgentTokenInfo>;
+}
+
+export interface AgentTokenInfo {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -109,6 +118,7 @@ export function useExtensionMessages(
   const [alwaysShowLabels, setAlwaysShowLabels] = useState(false);
   const [hooksEnabled, setHooksEnabled] = useState(true);
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
+  const [agentTokenInfo, setAgentTokenInfo] = useState<Record<number, AgentTokenInfo>>({});
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -560,6 +570,16 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentTokenUsage') {
         const id = msg.id as number;
         os.setAgentTokens(id, msg.inputTokens as number, msg.outputTokens as number);
+        setAgentTokenInfo((prev) => ({
+          ...prev,
+          [id]: {
+            inputTokens: msg.inputTokens as number,
+            outputTokens: msg.outputTokens as number,
+            model: msg.model as string | undefined,
+            contextTokens: msg.contextTokens as number | undefined,
+            contextLimit: msg.contextLimit as number | undefined,
+          },
+        }));
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -588,5 +608,6 @@ export function useExtensionMessages(
     hooksEnabled,
     setHooksEnabled,
     hooksInfoShown,
+    agentTokenInfo,
   };
 }
