@@ -85,39 +85,52 @@ export function processTranscriptLine(
     }
 
     // -- Token usage extraction from assistant records --
-    const usage = record.message?.usage as
-      | {
-          input_tokens?: number;
-          output_tokens?: number;
-          cache_read_input_tokens?: number;
-          cache_creation_input_tokens?: number;
-        }
-      | undefined;
+    // Sidechain (sub-agent) records carry the SUB-agent's own context, which would
+    // corrupt the main session's gauge — skip them entirely.
+    const usage =
+      record.isSidechain === true
+        ? undefined
+        : (record.message?.usage as
+            | {
+                input_tokens?: number;
+                output_tokens?: number;
+                cache_read_input_tokens?: number;
+                cache_creation_input_tokens?: number;
+              }
+            | undefined);
     if (usage) {
-      if (typeof usage.input_tokens === 'number') {
-        agent.inputTokens += usage.input_tokens;
+      // One assistant message with N parallel tool_use blocks is written as N JSONL
+      // records, each repeating the same message.usage — dedupe by message.id so
+      // cumulative counters aren't multiplied.
+      const messageId = record.message?.id;
+      const isDuplicate = typeof messageId === 'string' && messageId === agent.lastUsageMessageId;
+      if (!isDuplicate) {
+        if (typeof messageId === 'string') agent.lastUsageMessageId = messageId;
+        if (typeof usage.input_tokens === 'number') {
+          agent.inputTokens += usage.input_tokens;
+        }
+        if (typeof usage.output_tokens === 'number') {
+          agent.outputTokens += usage.output_tokens;
+        }
+        // Context size of the LATEST request: uncached input + cached prefix + output.
+        const ctx =
+          (usage.input_tokens ?? 0) +
+          (usage.cache_read_input_tokens ?? 0) +
+          (usage.cache_creation_input_tokens ?? 0) +
+          (usage.output_tokens ?? 0);
+        if (ctx > 0) agent.contextTokens = ctx;
+        const model = record.message?.model;
+        if (typeof model === 'string' && model) agent.model = model;
+        agents.broadcast({
+          type: 'agentTokenUsage',
+          id: agentId,
+          inputTokens: agent.inputTokens,
+          outputTokens: agent.outputTokens,
+          model: agent.model,
+          contextTokens: agent.contextTokens,
+          contextLimit: getContextLimit(),
+        });
       }
-      if (typeof usage.output_tokens === 'number') {
-        agent.outputTokens += usage.output_tokens;
-      }
-      // Context size of the LATEST request: uncached input + cached prefix + output.
-      const ctx =
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0) +
-        (usage.output_tokens ?? 0);
-      if (ctx > 0) agent.contextTokens = ctx;
-      const model = record.message?.model;
-      if (typeof model === 'string' && model) agent.model = model;
-      agents.broadcast({
-        type: 'agentTokenUsage',
-        id: agentId,
-        inputTokens: agent.inputTokens,
-        outputTokens: agent.outputTokens,
-        model: agent.model,
-        contextTokens: agent.contextTokens,
-        contextLimit: getContextLimit(),
-      });
     }
 
     // Resilient content extraction: support both record.message.content and record.content

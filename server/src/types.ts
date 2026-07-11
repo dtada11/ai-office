@@ -54,6 +54,8 @@ export interface AgentState {
   model?: string;
   /** Latest request context size (input + cache read/creation + output) */
   contextTokens?: number;
+  /** message.id of the last counted usage — dedupes multi-block assistant records */
+  lastUsageMessageId?: string;
 
   // -- Agent Teams --
   teamName?: string;
