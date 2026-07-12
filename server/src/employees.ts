@@ -1,11 +1,11 @@
 /**
  * Employee registry — the office's staff.
  *
- * Holds every hired employee (each one an independent session) and routes the
- * webview's messages to the right one. Today the chat panel only ever hires one,
- * so the protocol still carries no employee id; the manager keeps a Map anyway
- * because that is the shape the office needs, and it is what the character
- * binding and delegation build on next.
+ * One employee = one session + one office character, both keyed by the same
+ * agentId. The character is created by us at hire time (we never register the
+ * folder for scanning — that is what would drag the user's own terminal
+ * sessions into the office), and the session's id is bound to it as soon as the
+ * session reports one.
  *
  * Scope/safety: standalone mode only (server binds to 127.0.0.1). Permission
  * mode stays at the SDK default — every tool call that needs approval goes
@@ -15,27 +15,30 @@
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { ClaudeEmployee, type Employee, type EmployeeEvent } from './employee.js';
+import { readEmployees, writeEmployees } from './employeePersistence.js';
 import type { AgentState } from './types.js';
 
 /** How long a permission request waits for the user before being denied. */
-const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
+const PERMISSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface Staff {
   employee: Employee;
+  name: string;
+  cwd: string;
   model: string;
   contextTokens: number;
   contextLimit: number;
-  /** The office character bound to this employee, once the session reports its id. */
-  agentId?: number;
 }
 
+const staff = new Map<number, Staff>();
+const pendingPermissions = new Map<string, (allow: boolean) => void>();
+
 /** A character for an employee we started ourselves. `isExternal: false` keeps the
- *  stale-check (which only despawns external agents) from removing it, and we never
- *  register the folder for scanning — so no terminal session ever shows up here. */
-function newCharacter(id: number, sessionId: string, cwd: string): AgentState {
+ *  stale-check (which only despawns external agents) from removing it. */
+function newCharacter(id: number, cwd: string): AgentState {
   return {
     id,
-    sessionId,
+    sessionId: '',
     isExternal: false,
     projectDir: cwd,
     jsonlFile: '',
@@ -59,78 +62,77 @@ function newCharacter(id: number, sessionId: string, cwd: string): AgentState {
   };
 }
 
-const staff = new Map<number, Staff>();
-const pendingPermissions = new Map<string, (allow: boolean) => void>();
-
-/** The single employee the current chat panel talks to. Goes away in the next
- *  step, when the webview starts naming the employee it means. */
-const DEFAULT_ID = 1;
-
-function broadcastState(store: AgentStateStore): void {
-  const current = staff.get(DEFAULT_ID);
+function broadcastStaff(store: AgentStateStore): void {
   store.broadcast({
-    type: 'agentSessionState',
-    running: current !== undefined,
-    cwd: current?.employee.cwd ?? '',
-    model: current?.model ?? '',
-    contextTokens: current?.contextTokens ?? 0,
-    contextLimit: current?.contextLimit ?? 0,
+    type: 'employeeState',
+    employees: [...staff.entries()].map(([agentId, s]) => ({
+      agentId,
+      name: s.name,
+      cwd: s.cwd,
+      model: s.model,
+      contextTokens: s.contextTokens,
+      contextLimit: s.contextLimit,
+    })),
   });
 }
 
 function onEvent(
   store: AgentStateStore,
   runtime: AgentRuntime | undefined,
-  id: number,
+  agentId: number,
   event: EmployeeEvent,
 ): void {
-  const current = staff.get(id);
+  const current = staff.get(agentId);
+  if (!current) return;
 
   switch (event.kind) {
     case 'ready': {
-      // Put the employee in the office ourselves. We do NOT register the folder
-      // for scanning: that is what would drag the user's own terminal sessions in.
-      if (!current || current.agentId !== undefined) break;
-      const agentId = store.nextAgentId.current++;
-      store.set(agentId, newCharacter(agentId, event.sessionId, current.employee.cwd));
+      // Bind the session to the character we already put in the office, so hook
+      // events (typing, waiting, permission bubbles) reach the right one.
+      const character = store.get(agentId);
+      if (character) character.sessionId = event.sessionId;
       runtime?.registerAgent(event.sessionId, agentId);
-      current.agentId = agentId;
-      console.log(`[Pixel Agents] Employee character ${agentId} ← session ${event.sessionId}`);
+      console.log(`[Pixel Agents] Employee ${agentId} ← session ${event.sessionId}`);
       break;
     }
 
     case 'text':
     case 'tool':
-      store.broadcast({ type: 'agentEvent', kind: event.kind, text: event.text });
+      store.broadcast({ type: 'agentEvent', agentId, kind: event.kind, text: event.text });
       break;
 
     case 'result':
-      store.broadcast({ type: 'agentEvent', kind: 'result', text: event.text });
+      store.broadcast({ type: 'agentEvent', agentId, kind: 'result', text: event.text });
       break;
 
     case 'usage':
-      if (current) {
-        current.model = event.model;
-        current.contextTokens = event.contextTokens;
-        current.contextLimit = event.contextLimit;
-        broadcastState(store);
-      }
+      current.model = event.model;
+      current.contextTokens = event.contextTokens;
+      current.contextLimit = event.contextLimit;
+      broadcastStaff(store);
       break;
 
     case 'ended':
       if (event.text) {
-        store.broadcast({ type: 'agentEvent', kind: 'result', text: `세션 오류: ${event.text}` });
+        store.broadcast({
+          type: 'agentEvent',
+          agentId,
+          kind: 'result',
+          text: `세션 오류: ${event.text}`,
+        });
       }
-      if (current?.agentId !== undefined) store.delete(current.agentId);
-      staff.delete(id);
-      broadcastState(store);
+      store.delete(agentId);
+      staff.delete(agentId);
+      broadcastStaff(store);
       break;
   }
 }
 
-/** Ask the user, and park the employee's tool call until they answer. */
+/** Ask the user, and park the employee's tool call until they answer. The bubble
+ *  over the character stays up the whole time, so a long wait is fine. */
 function askPermission(
   store: AgentStateStore,
+  agentId: number,
   ask: { requestId: string; toolName: string; title: string; input: string },
 ): Promise<boolean> {
   return new Promise((resolve) => {
@@ -144,40 +146,52 @@ function askPermission(
       resolve(allow);
     });
 
-    store.broadcast({ type: 'agentPermissionRequest', ...ask });
+    store.broadcast({ type: 'agentPermissionRequest', agentId, ...ask });
   });
 }
 
-/** Hire an employee for a folder. Replaces the one already there (chat panel
- *  semantics today: one employee at a time). The name comes from the folder
- *  until the webview starts asking for one. */
 export async function hireEmployee(
   store: AgentStateStore,
+  name: string,
   cwd: string,
   model?: string,
   runtime?: AgentRuntime,
 ): Promise<void> {
-  if (!cwd.trim()) return;
-  fireEmployee(store, DEFAULT_ID);
+  if (!name.trim() || !cwd.trim()) return;
 
-  const id = DEFAULT_ID;
-  const name = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
+  // The character comes first: it gives us the agentId everything else is keyed by,
+  // and the office shows the employee as soon as they are hired.
+  const agentId = store.nextAgentId.current++;
+  store.set(agentId, newCharacter(agentId, cwd));
+
   const employee = new ClaudeEmployee(name, cwd, {
-    onEvent: (event) => onEvent(store, runtime, id, event),
-    askPermission: (ask) => askPermission(store, ask),
+    onEvent: (event) => onEvent(store, runtime, agentId, event),
+    askPermission: (ask) => askPermission(store, agentId, ask),
   });
 
-  staff.set(id, { employee, model: '', contextTokens: 0, contextLimit: 0 });
+  staff.set(agentId, { employee, name, cwd, model: '', contextTokens: 0, contextLimit: 0 });
   await employee.start(model);
-  broadcastState(store);
-  console.log(`[Pixel Agents] Employee "${name}" started in ${cwd}`);
+  broadcastStaff(store);
+  saveStaff();
+  console.log(`[Pixel Agents] Hired "${name}" (agent ${agentId}) in ${cwd}`);
 }
 
-export function sendToEmployee(store: AgentStateStore, text: string): void {
-  const current = staff.get(DEFAULT_ID);
+export function fireEmployee(store: AgentStateStore, agentId: number): void {
+  const current = staff.get(agentId);
+  if (!current) return;
+  current.employee.stop();
+  store.delete(agentId);
+  staff.delete(agentId);
+  broadcastStaff(store);
+  saveStaff();
+  console.log(`[Pixel Agents] Fired agent ${agentId}`);
+}
+
+export function sendToEmployee(store: AgentStateStore, agentId: number, text: string): void {
+  const current = staff.get(agentId);
   if (!current || !text.trim()) return;
   current.employee.send(text);
-  store.broadcast({ type: 'agentEvent', kind: 'user', text });
+  store.broadcast({ type: 'agentEvent', agentId, kind: 'user', text });
 }
 
 export function resolveEmployeePermission(requestId: string, allow: boolean): void {
@@ -187,38 +201,45 @@ export function resolveEmployeePermission(requestId: string, allow: boolean): vo
   resolve(allow);
 }
 
-/** Switch the model of a running employee (no-op when nobody is working). The UI
- *  confirms the switch once the next reply comes back carrying the new model. */
+/** Switch the model of every employee. The UI confirms the switch once a reply
+ *  comes back carrying the new model. */
 export function setEmployeeModel(store: AgentStateStore, model: string): void {
-  const current = staff.get(DEFAULT_ID);
-  if (!current) return;
-  void current.employee.setModel(model).catch((err) => {
-    store.broadcast({
-      type: 'agentEvent',
-      kind: 'result',
-      text: `모델 변경 실패: ${err instanceof Error ? err.message : String(err)}`,
+  for (const [agentId, current] of staff) {
+    void current.employee.setModel(model).catch((err) => {
+      store.broadcast({
+        type: 'agentEvent',
+        agentId,
+        kind: 'result',
+        text: `모델 변경 실패: ${err instanceof Error ? err.message : String(err)}`,
+      });
     });
-  });
+  }
 }
 
-export function fireEmployee(store: AgentStateStore, id: number = DEFAULT_ID): void {
-  const current = staff.get(id);
-  if (!current) return;
-  current.employee.stop();
-  if (current.agentId !== undefined) store.delete(current.agentId);
-  staff.delete(id);
-  denyAllPending();
-  broadcastState(store);
+/** Send the current staff to a client that just connected. */
+export function sendStaffTo(store: AgentStateStore): void {
+  broadcastStaff(store);
 }
 
-function denyAllPending(): void {
-  for (const [, resolve] of pendingPermissions) resolve(false);
-  pendingPermissions.clear();
+function saveStaff(): void {
+  writeEmployees([...staff.values()].map((s) => ({ name: s.name, cwd: s.cwd })));
+}
+
+/** Re-hire everyone from the roster when the office opens. */
+export async function rehireSavedEmployees(
+  store: AgentStateStore,
+  model?: string,
+  runtime?: AgentRuntime,
+): Promise<void> {
+  for (const saved of readEmployees()) {
+    await hireEmployee(store, saved.name, saved.cwd, model, runtime);
+  }
 }
 
 /** Terminate every employee on server shutdown. */
 export function disposeEmployees(): void {
   for (const [, current] of staff) current.employee.stop();
   staff.clear();
-  denyAllPending();
+  for (const [, resolve] of pendingPermissions) resolve(false);
+  pendingPermissions.clear();
 }

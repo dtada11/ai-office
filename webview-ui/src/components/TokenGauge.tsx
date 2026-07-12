@@ -9,7 +9,7 @@ import {
   TOKEN_DANGER_THRESHOLD,
   TOKEN_WARN_THRESHOLD,
 } from '../constants.js';
-import type { AgentTokenInfo, PlanUsageInfo } from '../hooks/useExtensionMessages.js';
+import type { AgentTokenInfo, EmployeeInfo, PlanUsageInfo } from '../hooks/useExtensionMessages.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
 
@@ -96,10 +96,8 @@ interface TokenGaugeProps {
   selectedAgent: number | null;
   agentTokenInfo: Record<number, AgentTokenInfo>;
   planUsage: PlanUsageInfo | null;
-  /** Model the chat-panel session actually replied with; '' when none. */
-  sessionModel: string;
-  /** Context fill of the chat-panel session; tokens = 0 when it hasn't answered. */
-  sessionContext: { tokens: number; limit: number };
+  /** The staff; the gauge shows the selected employee's context. */
+  employees: EmployeeInfo[];
 }
 
 export function TokenGauge({
@@ -107,8 +105,7 @@ export function TokenGauge({
   selectedAgent,
   agentTokenInfo,
   planUsage,
-  sessionModel,
-  sessionContext,
+  employees,
 }: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,11 +127,12 @@ export function TokenGauge({
   if (agentId === undefined && !planUsage) return null;
   const info = agentId !== undefined ? agentTokenInfo[agentId] : undefined;
 
-  // The chat session reports its own usage, which beats parsing transcripts —
-  // and it's the only source when the session runs outside the scanned folder.
-  const used = sessionContext.tokens || (info?.contextTokens ?? 0);
+  // An employee reports its own usage, which beats parsing transcripts — and it
+  // is the only source when the employee works outside the scanned folder.
+  const employee = employees.find((e) => e.agentId === agentId);
+  const used = employee?.contextTokens || (info?.contextTokens ?? 0);
   const limit =
-    (sessionContext.tokens ? sessionContext.limit : info?.contextLimit) || DEFAULT_CONTEXT_LIMIT;
+    (employee?.contextTokens ? employee.contextLimit : info?.contextLimit) || DEFAULT_CONTEXT_LIMIT;
   const remaining = Math.max(0, limit - used);
   const ratio = Math.min(1, used / limit);
 
@@ -151,7 +149,7 @@ export function TokenGauge({
       <div className="relative flex items-center justify-between gap-8">
         <span className="text-sm text-text-muted whitespace-nowrap">모델</span>
         <Button variant="default" size="sm" onClick={() => setIsOpen((v) => !v)}>
-          {displayModel(sessionModel || picked || info?.model)} ▾
+          {displayModel(employee?.model || picked || info?.model)} ▾
         </Button>
         {isOpen && (
           <div className="absolute top-full right-0 pt-4 z-30">

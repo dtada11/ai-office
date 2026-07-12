@@ -103,8 +103,8 @@ components:
         # Shell bridge
         - $ref: '#/components/schemas/ShellOutput'
         - $ref: '#/components/schemas/ShellExit'
-        # Persistent Claude session (chat panel)
-        - $ref: '#/components/schemas/AgentSessionState'
+        # Employees (each one a session + an office character)
+        - $ref: '#/components/schemas/EmployeeState'
         - $ref: '#/components/schemas/AgentSessionEvent'
         - $ref: '#/components/schemas/AgentPermissionRequest'
         # Layout
@@ -146,10 +146,10 @@ components:
         - $ref: '#/components/schemas/RequestDiagnostics'
         - $ref: '#/components/schemas/RunShellCommand'
         - $ref: '#/components/schemas/KillShellCommand'
-        - $ref: '#/components/schemas/StartAgentSession'
+        - $ref: '#/components/schemas/HireEmployee'
+        - $ref: '#/components/schemas/FireEmployee'
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/AgentPermissionDecision'
-        - $ref: '#/components/schemas/StopAgentSession'
         - $ref: '#/components/schemas/RefreshPlanUsage'
       discriminator: type
 
@@ -509,32 +509,45 @@ components:
           type: string
           description: Present when the process could not be spawned or was killed.
 
-    AgentSessionState:
+    EmployeeState:
       description: |
-        Whether the persistent Claude session (chat panel) is running, the
-        folder it runs in, and the model it actually answered with (read back
-        from the session's own replies, so a model switch is visible).
+        The whole staff. Broadcast whenever someone is hired, fired, or reports
+        a new model / context fill. Each employee owns one session and one
+        office character, keyed by the same agentId.
       type: object
       additionalProperties: false
-      required: [type, running, cwd]
+      required: [type, employees]
       properties:
         type:
-          const: agentSessionState
-        running:
-          type: boolean
+          const: employeeState
+        employees:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeInfo'
+
+    EmployeeInfo:
+      type: object
+      additionalProperties: false
+      required: [agentId, name, cwd]
+      properties:
+        agentId:
+          type: integer
+          description: Also the id of this employee's office character.
+        name:
+          type: string
         cwd:
           type: string
+          description: The folder this employee is responsible for.
         model:
           type: string
-          description: Model of the session's latest reply; empty until it answers.
+          description: Model of the employee's latest reply; empty until it answers.
         contextTokens:
           type: integer
           description: |
-            How full the session's context window is, taken from the reply's own
+            How full the employee's context window is, taken from the reply's own
             usage (uncached + cached + output). 0 until it answers.
         contextLimit:
           type: integer
-          description: Context window of the session's model.
 
     AgentEventKind:
       type: string
@@ -542,14 +555,16 @@ components:
 
     AgentSessionEvent:
       description: |
-        One piece of the persistent Claude session's transcript: the user's own
-        message echoed back, assistant text, a tool name, or a turn result.
+        One piece of an employee's transcript: the user's own message echoed
+        back, assistant text, a tool name, or a turn result.
       type: object
       additionalProperties: false
-      required: [type, kind, text]
+      required: [type, agentId, kind, text]
       properties:
         type:
           const: agentEvent
+        agentId:
+          type: integer
         kind:
           $ref: '#/components/schemas/AgentEventKind'
         text:
@@ -557,14 +572,16 @@ components:
 
     AgentPermissionRequest:
       description: |
-        A tool call in the persistent session needs approval. The session blocks
+        An employee's tool call needs approval. That employee's session blocks
         until the client answers with AgentPermissionDecision (or it times out).
       type: object
       additionalProperties: false
-      required: [type, requestId, toolName, title, input]
+      required: [type, agentId, requestId, toolName, title, input]
       properties:
         type:
           const: agentPermissionRequest
+        agentId:
+          type: integer
         requestId:
           type: string
         toolName:
@@ -994,29 +1011,45 @@ components:
         execId:
           type: string
 
-    StartAgentSession:
+    HireEmployee:
       description: |
-        Start (or restart) the persistent Claude session in the given folder.
-        Standalone mode only; runs on the server host under the local Claude
-        Code login. Tool calls needing approval go through AgentPermissionRequest.
+        Hire an employee: start a session in the given folder and put a matching
+        character in the office. Standalone mode only; runs on the server host
+        under the local Claude Code login. Tool calls needing approval go through
+        AgentPermissionRequest.
       type: object
       additionalProperties: false
-      required: [type, cwd]
+      required: [type, name, cwd]
       properties:
         type:
-          const: startAgentSession
+          const: hireEmployee
+        name:
+          type: string
         cwd:
           type: string
-          description: Working directory the session runs in.
+          description: The folder this employee is responsible for.
 
-    SendAgentMessage:
-      description: Send one user message to the running Claude session.
+    FireEmployee:
+      description: End an employee's session and remove their character.
       type: object
       additionalProperties: false
-      required: [type, text]
+      required: [type, agentId]
+      properties:
+        type:
+          const: fireEmployee
+        agentId:
+          type: integer
+
+    SendAgentMessage:
+      description: Send one user message to a specific employee.
+      type: object
+      additionalProperties: false
+      required: [type, agentId, text]
       properties:
         type:
           const: sendAgentMessage
+        agentId:
+          type: integer
         text:
           type: string
 
@@ -1033,14 +1066,6 @@ components:
         allow:
           type: boolean
 
-    StopAgentSession:
-      description: Terminate the running Claude session.
-      type: object
-      additionalProperties: false
-      required: [type]
-      properties:
-        type:
-          const: stopAgentSession
 
     RefreshPlanUsage:
       description: |

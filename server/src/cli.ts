@@ -20,8 +20,9 @@ import {
   loadPetSprites,
   loadWallTiles,
 } from './assetLoader.js';
+import { getConfiguredModel } from './claudeSettings.js';
 import type { AssetCache } from './clientMessageHandler.js';
-import { disposeEmployees } from './employees.js';
+import { disposeEmployees, rehireSavedEmployees } from './employees.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
@@ -162,6 +163,9 @@ async function main(): Promise<void> {
       runtime.startExternalScanning(projectDir);
       runtime.startStaleCheck();
     }
+
+    // Everyone on the roster clocks back in (conversations start fresh).
+    void rehireSavedEmployees(store, getConfiguredModel(), runtime);
 
     // ── Plan usage gauges: scan transcripts + broadcast every minute ──
     const planTracker = new PlanUsageTracker();

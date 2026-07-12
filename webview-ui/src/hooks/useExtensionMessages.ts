@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import type { OfficeState } from '../office/engine/officeState.js';
@@ -74,10 +74,35 @@ interface ExtensionMessageState {
   hooksInfoShown: boolean;
   agentTokenInfo: Record<number, AgentTokenInfo>;
   planUsage: PlanUsageInfo | null;
-  /** Model of the chat-panel session's latest reply; '' when it hasn't answered. */
-  sessionModel: string;
-  /** Context window fill of the chat-panel session; tokens = 0 when unknown. */
-  sessionContext: { tokens: number; limit: number };
+  /** Everyone working in the office; agentId doubles as their character's id. */
+  employees: EmployeeInfo[];
+  /** Transcript per employee. */
+  chatLogs: Record<number, ChatEntry[]>;
+  /** The tool call each employee is waiting on approval for, if any. */
+  permissions: Record<number, PermissionRequest | undefined>;
+  /** Clear an employee's pending request once the user has answered it. */
+  clearPermission: (agentId: number) => void;
+}
+
+export interface EmployeeInfo {
+  agentId: number;
+  name: string;
+  cwd: string;
+  model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
+}
+
+export interface ChatEntry {
+  kind: 'user' | 'text' | 'tool' | 'result';
+  text: string;
+}
+
+export interface PermissionRequest {
+  requestId: string;
+  toolName: string;
+  title: string;
+  input: string;
 }
 
 export interface AgentTokenInfo {
@@ -134,10 +159,9 @@ export function useExtensionMessages(
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
   const [agentTokenInfo, setAgentTokenInfo] = useState<Record<number, AgentTokenInfo>>({});
   const [planUsage, setPlanUsage] = useState<PlanUsageInfo | null>(null);
-  /** Model the chat-panel session actually replied with ('' until it answers). */
-  const [sessionModel, setSessionModel] = useState('');
-  /** Context window fill of the chat-panel session, straight from its replies. */
-  const [sessionContext, setSessionContext] = useState({ tokens: 0, limit: 0 });
+  const [employees, setEmployees] = useState<EmployeeInfo[]>([]);
+  const [chatLogs, setChatLogs] = useState<Record<number, ChatEntry[]>>({});
+  const [permissions, setPermissions] = useState<Record<number, PermissionRequest | undefined>>({});
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -608,12 +632,34 @@ export function useExtensionMessages(
           weeklyResetsAt: msg.weeklyResetsAt as string | undefined,
           calibrated: msg.calibrated as boolean,
         });
-      } else if (msg.type === 'agentSessionState') {
-        setSessionModel((msg.model as string | undefined) ?? '');
-        setSessionContext({
-          tokens: (msg.contextTokens as number | undefined) ?? 0,
-          limit: (msg.contextLimit as number | undefined) ?? 0,
+      } else if (msg.type === 'employeeState') {
+        setEmployees((msg.employees as EmployeeInfo[]) ?? []);
+      } else if (msg.type === 'agentEvent') {
+        const agentId = msg.agentId as number;
+        const kind = msg.kind as ChatEntry['kind'];
+        const text = msg.text as string;
+        if (!text && kind === 'result') return; // a clean turn ends silently
+        setChatLogs((prev) => {
+          const log = prev[agentId] ?? [];
+          const last = log[log.length - 1];
+          // Merge consecutive chunks of the same kind to keep the list small.
+          const merged =
+            last && last.kind === kind && kind !== 'user'
+              ? [...log.slice(0, -1), { kind, text: last.text + text }]
+              : [...log, { kind, text }];
+          return { ...prev, [agentId]: merged };
         });
+      } else if (msg.type === 'agentPermissionRequest') {
+        const agentId = msg.agentId as number;
+        setPermissions((prev) => ({
+          ...prev,
+          [agentId]: {
+            requestId: msg.requestId as string,
+            toolName: msg.toolName as string,
+            title: msg.title as string,
+            input: msg.input as string,
+          },
+        }));
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -622,7 +668,15 @@ export function useExtensionMessages(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getOfficeState]);
 
+  const clearPermission = useCallback((agentId: number) => {
+    setPermissions((prev) => ({ ...prev, [agentId]: undefined }));
+  }, []);
+
   return {
+    employees,
+    chatLogs,
+    permissions,
+    clearPermission,
     agents,
     selectedAgent,
     agentTools,
@@ -644,7 +698,5 @@ export function useExtensionMessages(
     hooksInfoShown,
     agentTokenInfo,
     planUsage,
-    sessionModel,
-    sessionContext,
   };
 }

@@ -1,0 +1,92 @@
+import { useState } from 'react';
+
+import type { EmployeeInfo } from '../hooks/useExtensionMessages.js';
+import { transport } from '../transport/index.js';
+import { Button } from './ui/Button.js';
+
+/** Hire and fire. Hiring starts a session in the given folder and puts a
+ *  character in the office; clicking that character opens their chat. */
+
+interface StaffPanelProps {
+  employees: EmployeeInfo[];
+}
+
+export function StaffPanel({ employees }: StaffPanelProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [cwd, setCwd] = useState('');
+
+  const hire = () => {
+    if (!name.trim() || !cwd.trim()) return;
+    transport.send({ type: 'hireEmployee', name: name.trim(), cwd: cwd.trim() });
+    setName('');
+    setCwd('');
+  };
+
+  if (!isOpen) {
+    return (
+      <div className="absolute bottom-60 left-10 z-30">
+        <Button variant="default" onClick={() => setIsOpen(true)} title="직원 고용·해임">
+          직원 관리
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute bottom-60 left-10 z-30 pixel-panel p-8 flex flex-col gap-6 w-400">
+      <div className="flex items-center justify-between gap-8">
+        <span className="text-sm whitespace-nowrap">직원 관리</span>
+        <Button variant="default" size="sm" onClick={() => setIsOpen(false)} title="닫기">
+          ✕
+        </Button>
+      </div>
+
+      {employees.length === 0 ? (
+        <span className="text-xs text-text-muted">아직 직원이 없습니다.</span>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {employees.map((e) => (
+            <div key={e.agentId} className="flex items-center justify-between gap-8">
+              <div className="flex flex-col">
+                <span className="text-xs">{e.name}</span>
+                <span className="font-mono text-xs text-text-muted break-all">{e.cwd}</span>
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => transport.send({ type: 'fireEmployee', agentId: e.agentId })}
+                title="세션 종료 후 퇴장"
+              >
+                해임
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4 border-t-2 border-border pt-6">
+        <input
+          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="이름 (예: 비서)"
+          data-testid="hire-name"
+        />
+        <input
+          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+          value={cwd}
+          onChange={(e) => setCwd(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') hire();
+          }}
+          placeholder="담당 폴더 (예: F:\Projects\ai-office)"
+          data-testid="hire-cwd"
+        />
+        <Button variant="default" size="sm" onClick={hire}>
+          고용
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -3,11 +3,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
-import { ChatPanel } from './components/ChatPanel.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { EmployeeChat } from './components/EmployeeChat.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { StaffPanel } from './components/StaffPanel.js';
 import { TokenGauge } from './components/TokenGauge.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
@@ -85,9 +86,14 @@ function App() {
     hooksInfoShown,
     agentTokenInfo,
     planUsage,
-    sessionModel,
-    sessionContext,
+    employees,
+    chatLogs,
+    permissions,
+    clearPermission,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
+
+  /** Chat windows the user has open, in the order they opened them. */
+  const [openChats, setOpenChats] = useState<number[]>([]);
 
   // Show migration notice once layout reset is detected
   const [migrationNoticeDismissed, setMigrationNoticeDismissed] = useState(false);
@@ -148,12 +154,14 @@ function App() {
     transport.send({ type: 'closeAgent', id });
   }, []);
 
+  /** Clicking a character opens that employee's chat — the window IS their session. */
   const handleClick = useCallback((agentId: number) => {
     // If clicked agent is a sub-agent, focus the parent's terminal instead
     const os = getOfficeState();
     const meta = os.subagentMeta.get(agentId);
     const focusId = meta ? meta.parentAgentId : agentId;
     transport.send({ type: 'focusAgent', id: focusId });
+    setOpenChats((prev) => (prev.includes(focusId) ? prev : [...prev, focusId]));
   }, []);
 
   const officeState = getOfficeState();
@@ -348,7 +356,23 @@ function App() {
         workspaceFolders={workspaceFolders}
       />
 
-      {!editor.isEditMode && <ChatPanel />}
+      {!editor.isEditMode && <StaffPanel employees={employees} />}
+
+      {!editor.isEditMode &&
+        openChats
+          .map((agentId) => employees.find((e) => e.agentId === agentId))
+          .filter((e): e is (typeof employees)[number] => e !== undefined)
+          .map((employee, index) => (
+            <EmployeeChat
+              key={employee.agentId}
+              employee={employee}
+              log={chatLogs[employee.agentId] ?? []}
+              permission={permissions[employee.agentId]}
+              index={index}
+              onClose={() => setOpenChats((prev) => prev.filter((id) => id !== employee.agentId))}
+              onDecided={() => clearPermission(employee.agentId)}
+            />
+          ))}
 
       {!editor.isEditMode && (
         <TokenGauge
@@ -356,8 +380,7 @@ function App() {
           selectedAgent={selectedAgent}
           agentTokenInfo={agentTokenInfo}
           planUsage={planUsage}
-          sessionModel={sessionModel}
-          sessionContext={sessionContext}
+          employees={employees}
         />
       )}
 

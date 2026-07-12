@@ -28,7 +28,7 @@ export type ServerMessage =
   | PlanUsage
   | ShellOutput
   | ShellExit
-  | AgentSessionState
+  | EmployeeState
   | AgentSessionEvent
   | AgentPermissionRequest
   | LayoutLoaded
@@ -64,10 +64,10 @@ export type ClientMessage =
   | RequestDiagnostics
   | RunShellCommand
   | KillShellCommand
-  | StartAgentSession
+  | HireEmployee
+  | FireEmployee
   | SendAgentMessage
   | AgentPermissionDecision
-  | StopAgentSession
   | RefreshPlanUsage;
 
 export interface ProviderCapabilities {
@@ -220,9 +220,14 @@ export interface ShellExit {
   error?: string;
 }
 
-export interface AgentSessionState {
-  type: 'agentSessionState';
-  running: boolean;
+export interface EmployeeState {
+  type: 'employeeState';
+  employees: EmployeeInfo[];
+}
+
+export interface EmployeeInfo {
+  agentId: number;
+  name: string;
   cwd: string;
   model?: string;
   contextTokens?: number;
@@ -231,6 +236,7 @@ export interface AgentSessionState {
 
 export interface AgentSessionEvent {
   type: 'agentEvent';
+  agentId: number;
   kind: AgentEventKind;
   text: string;
 }
@@ -239,6 +245,7 @@ export type AgentEventKind = 'user' | 'text' | 'tool' | 'result';
 
 export interface AgentPermissionRequest {
   type: 'agentPermissionRequest';
+  agentId: number;
   requestId: string;
   toolName: string;
   title: string;
@@ -454,13 +461,20 @@ export interface KillShellCommand {
   execId: string;
 }
 
-export interface StartAgentSession {
-  type: 'startAgentSession';
+export interface HireEmployee {
+  type: 'hireEmployee';
+  name: string;
   cwd: string;
+}
+
+export interface FireEmployee {
+  type: 'fireEmployee';
+  agentId: number;
 }
 
 export interface SendAgentMessage {
   type: 'sendAgentMessage';
+  agentId: number;
   text: string;
 }
 
@@ -468,10 +482,6 @@ export interface AgentPermissionDecision {
   type: 'agentPermissionDecision';
   requestId: string;
   allow: boolean;
-}
-
-export interface StopAgentSession {
-  type: 'stopAgentSession';
 }
 
 export interface RefreshPlanUsage {

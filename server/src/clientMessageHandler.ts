@@ -7,6 +7,7 @@ import {
   fireEmployee,
   hireEmployee,
   resolveEmployeePermission,
+  sendStaffTo,
   sendToEmployee,
   setEmployeeModel,
 } from './employees.js';
@@ -66,6 +67,7 @@ export function handleClientMessage(
   switch (msg.type) {
     case 'webviewReady':
       handleWebviewReady(send, ctx);
+      sendStaffTo(store); // a fresh client needs to know who works here
       break;
 
     case 'saveLayout':
@@ -153,26 +155,28 @@ export function handleClientMessage(
       killShellCommand(store, msg.execId as string);
       break;
 
-    case 'startAgentSession':
-      void hireEmployee(store, msg.cwd as string, getConfiguredModel(), runtime).catch((err) => {
-        store.broadcast({
-          type: 'agentEvent',
-          kind: 'result',
-          text: `세션 시작 실패: ${err instanceof Error ? err.message : String(err)}`,
-        });
+    case 'hireEmployee':
+      void hireEmployee(
+        store,
+        msg.name as string,
+        msg.cwd as string,
+        getConfiguredModel(),
+        runtime,
+      ).catch((err) => {
+        console.error('[Pixel Agents] hire failed:', err);
       });
       break;
 
+    case 'fireEmployee':
+      fireEmployee(store, msg.agentId as number);
+      break;
+
     case 'sendAgentMessage':
-      sendToEmployee(store, msg.text as string);
+      sendToEmployee(store, msg.agentId as number, msg.text as string);
       break;
 
     case 'agentPermissionDecision':
       resolveEmployeePermission(msg.requestId as string, msg.allow as boolean);
-      break;
-
-    case 'stopAgentSession':
-      fireEmployee(store);
       break;
 
     case 'refreshPlanUsage':
