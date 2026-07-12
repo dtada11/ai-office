@@ -29,6 +29,8 @@ const importSdk = new Function(
 // ── The boundary types (provider-agnostic) ──────────────────────
 
 export type EmployeeEvent =
+  /** The session announced its id — the office binds a character to it here. */
+  | { kind: 'ready'; sessionId: string }
   /** A chunk of the assistant's answer. */
   | { kind: 'text'; text: string }
   /** A tool the employee is using, by name. */
@@ -132,6 +134,7 @@ export class ClaudeEmployee implements Employee {
     if (type === 'system' && (msg.subtype as string) === 'init') {
       // The session tells us its id — the office needs it to bind a character.
       this.sessionId = (msg.session_id as string) ?? '';
+      if (this.sessionId) this.host.onEvent({ kind: 'ready', sessionId: this.sessionId });
       return;
     }
 

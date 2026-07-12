@@ -154,7 +154,7 @@ export function handleClientMessage(
       break;
 
     case 'startAgentSession':
-      void hireEmployee(store, msg.cwd as string, getConfiguredModel()).catch((err) => {
+      void hireEmployee(store, msg.cwd as string, getConfiguredModel(), runtime).catch((err) => {
         store.broadcast({
           type: 'agentEvent',
           kind: 'result',

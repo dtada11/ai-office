@@ -12,8 +12,10 @@
  * through askPermission, which asks the webview and waits.
  */
 
+import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { ClaudeEmployee, type Employee, type EmployeeEvent } from './employee.js';
+import type { AgentState } from './types.js';
 
 /** How long a permission request waits for the user before being denied. */
 const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -23,6 +25,38 @@ interface Staff {
   model: string;
   contextTokens: number;
   contextLimit: number;
+  /** The office character bound to this employee, once the session reports its id. */
+  agentId?: number;
+}
+
+/** A character for an employee we started ourselves. `isExternal: false` keeps the
+ *  stale-check (which only despawns external agents) from removing it, and we never
+ *  register the folder for scanning — so no terminal session ever shows up here. */
+function newCharacter(id: number, sessionId: string, cwd: string): AgentState {
+  return {
+    id,
+    sessionId,
+    isExternal: false,
+    projectDir: cwd,
+    jsonlFile: '',
+    fileOffset: 0,
+    lineBuffer: '',
+    activeToolIds: new Set(),
+    activeToolStatuses: new Map(),
+    activeToolNames: new Map(),
+    activeSubagentToolIds: new Map(),
+    activeSubagentToolNames: new Map(),
+    backgroundAgentToolIds: new Set(),
+    isWaiting: false,
+    permissionSent: false,
+    hadToolsInTurn: false,
+    lastDataAt: 0,
+    linesProcessed: 0,
+    seenUnknownRecordTypes: new Set(),
+    hookDelivered: false,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
 }
 
 const staff = new Map<number, Staff>();
@@ -44,10 +78,27 @@ function broadcastState(store: AgentStateStore): void {
   });
 }
 
-function onEvent(store: AgentStateStore, id: number, event: EmployeeEvent): void {
+function onEvent(
+  store: AgentStateStore,
+  runtime: AgentRuntime | undefined,
+  id: number,
+  event: EmployeeEvent,
+): void {
   const current = staff.get(id);
 
   switch (event.kind) {
+    case 'ready': {
+      // Put the employee in the office ourselves. We do NOT register the folder
+      // for scanning: that is what would drag the user's own terminal sessions in.
+      if (!current || current.agentId !== undefined) break;
+      const agentId = store.nextAgentId.current++;
+      store.set(agentId, newCharacter(agentId, event.sessionId, current.employee.cwd));
+      runtime?.registerAgent(event.sessionId, agentId);
+      current.agentId = agentId;
+      console.log(`[Pixel Agents] Employee character ${agentId} ← session ${event.sessionId}`);
+      break;
+    }
+
     case 'text':
     case 'tool':
       store.broadcast({ type: 'agentEvent', kind: event.kind, text: event.text });
@@ -70,6 +121,7 @@ function onEvent(store: AgentStateStore, id: number, event: EmployeeEvent): void
       if (event.text) {
         store.broadcast({ type: 'agentEvent', kind: 'result', text: `세션 오류: ${event.text}` });
       }
+      if (current?.agentId !== undefined) store.delete(current.agentId);
       staff.delete(id);
       broadcastState(store);
       break;
@@ -103,6 +155,7 @@ export async function hireEmployee(
   store: AgentStateStore,
   cwd: string,
   model?: string,
+  runtime?: AgentRuntime,
 ): Promise<void> {
   if (!cwd.trim()) return;
   fireEmployee(store, DEFAULT_ID);
@@ -110,7 +163,7 @@ export async function hireEmployee(
   const id = DEFAULT_ID;
   const name = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
   const employee = new ClaudeEmployee(name, cwd, {
-    onEvent: (event) => onEvent(store, id, event),
+    onEvent: (event) => onEvent(store, runtime, id, event),
     askPermission: (ask) => askPermission(store, ask),
   });
 
@@ -152,6 +205,7 @@ export function fireEmployee(store: AgentStateStore, id: number = DEFAULT_ID): v
   const current = staff.get(id);
   if (!current) return;
   current.employee.stop();
+  if (current.agentId !== undefined) store.delete(current.agentId);
   staff.delete(id);
   denyAllPending();
   broadcastState(store);
