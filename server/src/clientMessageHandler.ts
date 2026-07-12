@@ -1,15 +1,15 @@
 import type { AgentRuntime } from './agentRuntime.js';
-import {
-  resolveAgentPermission,
-  sendAgentMessage,
-  setAgentSessionModel,
-  startAgentSession,
-  stopAgentSession,
-} from './agentSession.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import { getConfiguredModel, setConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
+import {
+  fireEmployee,
+  hireEmployee,
+  resolveEmployeePermission,
+  sendToEmployee,
+  setEmployeeModel,
+} from './employees.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
@@ -118,7 +118,7 @@ export function handleClientMessage(
       if (model) {
         const ok = setConfiguredModel(model);
         // Also switch the running chat-panel session, which applies immediately.
-        setAgentSessionModel(store, model);
+        setEmployeeModel(store, model);
         console.log(
           ok
             ? `[Pixel Agents] Claude model set to ${model} (applies to new sessions)`
@@ -154,7 +154,7 @@ export function handleClientMessage(
       break;
 
     case 'startAgentSession':
-      void startAgentSession(store, msg.cwd as string, getConfiguredModel()).catch((err) => {
+      void hireEmployee(store, msg.cwd as string, getConfiguredModel()).catch((err) => {
         store.broadcast({
           type: 'agentEvent',
           kind: 'result',
@@ -164,15 +164,15 @@ export function handleClientMessage(
       break;
 
     case 'sendAgentMessage':
-      sendAgentMessage(store, msg.text as string);
+      sendToEmployee(store, msg.text as string);
       break;
 
     case 'agentPermissionDecision':
-      resolveAgentPermission(msg.requestId as string, msg.allow as boolean);
+      resolveEmployeePermission(msg.requestId as string, msg.allow as boolean);
       break;
 
     case 'stopAgentSession':
-      stopAgentSession(store);
+      fireEmployee(store);
       break;
 
     case 'refreshPlanUsage':

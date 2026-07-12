@@ -11,7 +11,6 @@
 import * as path from 'path';
 
 import { AgentRuntime } from './agentRuntime.js';
-import { disposeAgentSession } from './agentSession.js';
 import { AgentStateStore } from './agentStateStore.js';
 import {
   loadCharacterSprites,
@@ -22,6 +21,7 @@ import {
   loadWallTiles,
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
+import { disposeEmployees } from './employees.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
       clearInterval(planUsageInterval);
       clearInterval(planCalibrateInterval);
       disposeShellRunner();
-      disposeAgentSession();
+      disposeEmployees();
       runtime.dispose();
       server.stop();
       process.exit(0);
