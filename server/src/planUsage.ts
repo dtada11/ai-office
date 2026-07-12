@@ -101,6 +101,12 @@ export class PlanUsageTracker {
     this.loadSnapshot();
   }
 
+  /** Re-read the snapshot after usageProbe rewrote it, so the next tick
+   *  recalibrates against the fresh percentages. */
+  reloadSnapshot(): void {
+    this.loadSnapshot();
+  }
+
   private loadSnapshot(): void {
     try {
       const raw = fs.readFileSync(SNAPSHOT_PATH, 'utf-8');

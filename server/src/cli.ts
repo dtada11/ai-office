@@ -27,6 +27,7 @@ import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 import { disposeShellRunner } from './shellRunner.js';
+import { refreshPlanSnapshot } from './usageProbe.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -100,6 +101,9 @@ async function main(): Promise<void> {
       runtime.handleHookEvent(providerId, event);
     });
 
+    // Assigned once the plan tracker exists below; the WS handler calls through it.
+    let refreshPlanUsage: () => Promise<void> = async () => {};
+
     // onSetHooksEnabled side effect: install/uninstall hooks when user toggles in UI.
     // Captures config from the outer scope after server.start().
     let currentConfig: { port: number; token: string } | null = null;
@@ -128,6 +132,7 @@ async function main(): Promise<void> {
       staticDir,
       assetCache,
       onSetHooksEnabled,
+      onRefreshPlanUsage: () => refreshPlanUsage(),
     });
     currentConfig = { port: config.port, token: config.token };
 
@@ -168,8 +173,16 @@ async function main(): Promise<void> {
         console.error('[Pixel Agents] plan usage tick failed:', err);
       }
     };
-    void tickPlanUsage();
+
+    // Re-anchor the gauges on the real percentages from `/usage` (zero tokens).
+    refreshPlanUsage = async (): Promise<void> => {
+      if (await refreshPlanSnapshot()) planTracker.reloadSnapshot();
+      await tickPlanUsage();
+    };
+
+    void refreshPlanUsage();
     const planUsageInterval = setInterval(() => void tickPlanUsage(), 60_000);
+    const planCalibrateInterval = setInterval(() => void refreshPlanUsage(), 30 * 60_000);
 
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 
@@ -177,6 +190,7 @@ async function main(): Promise<void> {
     function shutdown(): void {
       console.log('\nShutting down...');
       clearInterval(planUsageInterval);
+      clearInterval(planCalibrateInterval);
       disposeShellRunner();
       disposeAgentSession();
       runtime.dispose();

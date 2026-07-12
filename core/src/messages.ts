@@ -67,7 +67,8 @@ export type ClientMessage =
   | StartAgentSession
   | SendAgentMessage
   | AgentPermissionDecision
-  | StopAgentSession;
+  | StopAgentSession
+  | RefreshPlanUsage;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -468,4 +469,8 @@ export interface AgentPermissionDecision {
 
 export interface StopAgentSession {
   type: 'stopAgentSession';
+}
+
+export interface RefreshPlanUsage {
+  type: 'refreshPlanUsage';
 }

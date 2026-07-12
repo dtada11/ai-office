@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   FUEL_COLOR_CRITICAL,
@@ -98,6 +98,17 @@ interface TokenGaugeProps {
 export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // The server answers with a fresh planUsage broadcast; clear the spinner then.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [planUsage]);
+
+  const refreshPlanUsage = () => {
+    setRefreshing(true);
+    transport.send({ type: 'refreshPlanUsage' });
+  };
 
   const agentId = selectedAgent ?? agents[0];
   // Plan gauges are account-wide, so keep the panel visible even with no agents.
@@ -166,11 +177,20 @@ export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }:
           />
           <PlanBar label="주간 전체" percent={planUsage.weeklyAllPercent} />
           <PlanBar label="주간 Fable" percent={planUsage.weeklyModelPercent} />
-          {!planUsage.calibrated && (
-            <span className="text-xs text-text-muted whitespace-nowrap">
-              미보정 추정치 (~/.pixel-agents/plan-usage.json 스냅샷 필요)
-            </span>
-          )}
+          <div className="flex items-center justify-between gap-8">
+            {!planUsage.calibrated && (
+              <span className="text-xs text-text-muted whitespace-nowrap">미보정 추정치</span>
+            )}
+            <Button
+              variant="default"
+              size="sm"
+              onClick={refreshPlanUsage}
+              title="/usage로 실제 사용률 다시 맞추기 (토큰 소모 없음)"
+              data-testid="plan-usage-refresh"
+            >
+              {refreshing ? '⋯' : '⟳'}
+            </Button>
+          </div>
         </div>
       )}
     </div>

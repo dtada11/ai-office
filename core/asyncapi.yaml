@@ -150,6 +150,7 @@ components:
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/StopAgentSession'
+        - $ref: '#/components/schemas/RefreshPlanUsage'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -1028,6 +1029,18 @@ components:
       properties:
         type:
           const: stopAgentSession
+
+    RefreshPlanUsage:
+      description: |
+        Re-calibrate the plan gauges by running `claude -p /usage` (a local
+        slash command: no model call, zero tokens) and rewriting the snapshot.
+        The server answers with a fresh PlanUsage broadcast.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: refreshPlanUsage
 
     ExportLayout:
       description: Trigger layout export via host-native save dialog.

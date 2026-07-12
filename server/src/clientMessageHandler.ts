@@ -36,6 +36,8 @@ export interface ClientMessageContext {
   cache: AssetCache | null;
   /** Install/uninstall hooks side effect. Needs server url+token known only to cli.ts. */
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
+  /** Re-calibrate the plan gauges from `/usage` and broadcast the result. */
+  onRefreshPlanUsage?: () => Promise<void> | void;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -171,6 +173,10 @@ export function handleClientMessage(
 
     case 'stopAgentSession':
       stopAgentSession(store);
+      break;
+
+    case 'refreshPlanUsage':
+      void ctx.onRefreshPlanUsage?.();
       break;
 
     case 'removeExternalAssetDirectory': {
