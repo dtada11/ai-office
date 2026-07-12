@@ -180,9 +180,12 @@ async function main(): Promise<void> {
       await tickPlanUsage();
     };
 
+    // The probe is a local command (~5s, zero tokens), and the local weighted-token
+    // estimate drifts fast on big-context work — measured ~4x too steep. So re-anchor
+    // on the real percentages often and let the estimate only fill the gap between.
     void refreshPlanUsage();
     const planUsageInterval = setInterval(() => void tickPlanUsage(), 60_000);
-    const planCalibrateInterval = setInterval(() => void refreshPlanUsage(), 30 * 60_000);
+    const planCalibrateInterval = setInterval(() => void refreshPlanUsage(), 2 * 60_000);
 
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 

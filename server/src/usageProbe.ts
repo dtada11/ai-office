@@ -71,7 +71,12 @@ export function parseUsageOutput(out: string): ParsedUsage | null {
 
 function runUsageCommand(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', ['-p', '/usage'], { shell: true, windowsHide: true });
+    // --no-session-persistence: without it every probe leaves a transcript file,
+    // which the office then picks up as a new session (ghost characters).
+    const proc = spawn('claude', ['-p', '--no-session-persistence', '/usage'], {
+      shell: true,
+      windowsHide: true,
+    });
     let out = '';
     const timer = setTimeout(() => {
       proc.kill();
