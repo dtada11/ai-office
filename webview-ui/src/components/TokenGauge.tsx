@@ -47,7 +47,10 @@ function fuelColor(ratio: number): string {
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  // One decimal below 100k, else a turn that adds a few hundred tokens rounds
+  // to the same number and the gauge looks stuck.
+  if (n >= 100_000) return `${Math.round(n / 1_000)}k`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
@@ -95,6 +98,8 @@ interface TokenGaugeProps {
   planUsage: PlanUsageInfo | null;
   /** Model the chat-panel session actually replied with; '' when none. */
   sessionModel: string;
+  /** Context fill of the chat-panel session; tokens = 0 when it hasn't answered. */
+  sessionContext: { tokens: number; limit: number };
 }
 
 export function TokenGauge({
@@ -103,6 +108,7 @@ export function TokenGauge({
   agentTokenInfo,
   planUsage,
   sessionModel,
+  sessionContext,
 }: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -124,8 +130,11 @@ export function TokenGauge({
   if (agentId === undefined && !planUsage) return null;
   const info = agentId !== undefined ? agentTokenInfo[agentId] : undefined;
 
-  const used = info?.contextTokens ?? 0;
-  const limit = info?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
+  // The chat session reports its own usage, which beats parsing transcripts —
+  // and it's the only source when the session runs outside the scanned folder.
+  const used = sessionContext.tokens || (info?.contextTokens ?? 0);
+  const limit =
+    (sessionContext.tokens ? sessionContext.limit : info?.contextLimit) || DEFAULT_CONTEXT_LIMIT;
   const remaining = Math.max(0, limit - used);
   const ratio = Math.min(1, used / limit);
 

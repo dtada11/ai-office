@@ -76,6 +76,8 @@ interface ExtensionMessageState {
   planUsage: PlanUsageInfo | null;
   /** Model of the chat-panel session's latest reply; '' when it hasn't answered. */
   sessionModel: string;
+  /** Context window fill of the chat-panel session; tokens = 0 when unknown. */
+  sessionContext: { tokens: number; limit: number };
 }
 
 export interface AgentTokenInfo {
@@ -134,6 +136,8 @@ export function useExtensionMessages(
   const [planUsage, setPlanUsage] = useState<PlanUsageInfo | null>(null);
   /** Model the chat-panel session actually replied with ('' until it answers). */
   const [sessionModel, setSessionModel] = useState('');
+  /** Context window fill of the chat-panel session, straight from its replies. */
+  const [sessionContext, setSessionContext] = useState({ tokens: 0, limit: 0 });
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -606,6 +610,10 @@ export function useExtensionMessages(
         });
       } else if (msg.type === 'agentSessionState') {
         setSessionModel((msg.model as string | undefined) ?? '');
+        setSessionContext({
+          tokens: (msg.contextTokens as number | undefined) ?? 0,
+          limit: (msg.contextLimit as number | undefined) ?? 0,
+        });
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -637,5 +645,6 @@ export function useExtensionMessages(
     agentTokenInfo,
     planUsage,
     sessionModel,
+    sessionContext,
   };
 }

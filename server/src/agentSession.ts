@@ -11,6 +11,7 @@
  */
 
 import type { AgentStateStore } from './agentStateStore.js';
+import { getContextLimit } from './claudeSettings.js';
 
 type Sdk = typeof import('@anthropic-ai/claude-agent-sdk', {
   with: { 'resolution-mode': 'import' },
@@ -36,6 +37,8 @@ interface Session {
   cwd: string;
   /** Model of the latest reply — read back from the session, not what we asked for. */
   model: string;
+  /** Context window filled by the latest reply (uncached + cached + output). */
+  contextTokens: number;
   /** Resolves the generator's pending `next()` with the message the user typed. */
   pushMessage: (text: string) => void;
 }
@@ -87,6 +90,8 @@ function broadcastState(store: AgentStateStore): void {
     running: session !== null,
     cwd: session?.cwd ?? '',
     model: session?.model ?? '',
+    contextTokens: session?.contextTokens ?? 0,
+    contextLimit: getContextLimit(),
   });
 }
 
@@ -95,11 +100,33 @@ function broadcastMessage(store: AgentStateStore, msg: Record<string, unknown>):
   const type = msg.type as string;
 
   if (type === 'assistant') {
-    const message = msg.message as { content?: unknown[]; model?: string } | undefined;
-    // The reply names the model that produced it — that's the proof a switch took.
-    if (session && message?.model && message.model !== session.model) {
-      session.model = message.model;
-      broadcastState(store);
+    const message = msg.message as
+      | {
+          content?: unknown[];
+          model?: string;
+          usage?: {
+            input_tokens?: number;
+            output_tokens?: number;
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+          };
+        }
+      | undefined;
+    // The reply carries the model that produced it and its own token usage —
+    // no transcript parsing needed, and it's exact.
+    if (session) {
+      const u = message?.usage;
+      const context = u
+        ? (u.input_tokens ?? 0) +
+          (u.cache_read_input_tokens ?? 0) +
+          (u.cache_creation_input_tokens ?? 0) +
+          (u.output_tokens ?? 0)
+        : 0;
+      const modelChanged = !!message?.model && message.model !== session.model;
+      const contextChanged = context > 0 && context !== session.contextTokens;
+      if (message?.model) session.model = message.model;
+      if (context > 0) session.contextTokens = context;
+      if (modelChanged || contextChanged) broadcastState(store);
     }
     for (const block of message?.content ?? []) {
       const b = block as { type: string; text?: string; name?: string };
@@ -159,7 +186,7 @@ export async function startAgentSession(
     },
   });
 
-  session = { q, cwd, model: '', pushMessage: input.push };
+  session = { q, cwd, model: '', contextTokens: 0, pushMessage: input.push };
   broadcastState(store);
   console.log(`[Pixel Agents] Agent session started in ${cwd}`);
 

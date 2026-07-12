@@ -86,6 +86,7 @@ function App() {
     agentTokenInfo,
     planUsage,
     sessionModel,
+    sessionContext,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -356,6 +357,7 @@ function App() {
           agentTokenInfo={agentTokenInfo}
           planUsage={planUsage}
           sessionModel={sessionModel}
+          sessionContext={sessionContext}
         />
       )}
 

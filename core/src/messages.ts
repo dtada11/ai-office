@@ -225,6 +225,8 @@ export interface AgentSessionState {
   running: boolean;
   cwd: string;
   model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
 }
 
 export interface AgentSessionEvent {
