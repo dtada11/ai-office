@@ -102,9 +102,11 @@ export class PlanUsageTracker {
   }
 
   /** Re-read the snapshot after usageProbe rewrote it, so the next tick
-   *  recalibrates against the fresh percentages. */
+   *  recalibrates against the fresh percentages. Clearing the flag is what
+   *  makes calibrate() run again — without it the new snapshot is ignored. */
   reloadSnapshot(): void {
     this.loadSnapshot();
+    this.calibrated = false;
   }
 
   private loadSnapshot(): void {

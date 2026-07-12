@@ -18,14 +18,15 @@ const PROBE_TIMEOUT_MS = 60 * 1000;
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-/** `Jul 12, 8:59pm` (server-local timezone) → ISO string. */
+/** `Jul 12, 8:59pm` or `Jul 12, 9pm` (server-local timezone) → ISO string.
+ *  On the hour, /usage prints no minutes — hence the optional `:MM`. */
 function parseResetTime(text: string): string | null {
-  const m = /^([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})(am|pm)$/i.exec(text.trim());
+  const m = /^([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{1,2})(?::(\d{2}))?(am|pm)$/i.exec(text.trim());
   if (!m) return null;
   const month = MONTHS.indexOf(m[1].toLowerCase());
   if (month < 0) return null;
   const day = Number(m[2]);
-  const minute = Number(m[4]);
+  const minute = m[4] ? Number(m[4]) : 0;
   let hour = Number(m[3]) % 12;
   if (m[5].toLowerCase() === 'pm') hour += 12;
 
