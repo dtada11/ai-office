@@ -15,6 +15,8 @@ import * as path from 'path';
 
 const SNAPSHOT_PATH = path.join(os.homedir(), '.pixel-agents', 'plan-usage.json');
 const PROBE_TIMEOUT_MS = 60 * 1000;
+/** Measured: /usage withholds the percentages when called again within ~1 minute. */
+const THROTTLE_MS = 60 * 1000;
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -102,24 +104,33 @@ function runUsageCommand(): Promise<string> {
  * dropped on purpose so the tracker recomputes it against the fresh percentages.
  * Returns true when the snapshot was updated.
  */
+/** True when the snapshot was taken so recently that /usage would still be
+ *  throttled — and would have nothing newer to tell us anyway. */
+function snapshotIsFresh(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8')) as { capturedAt?: string };
+    const at = Date.parse(raw.capturedAt ?? '');
+    return !Number.isNaN(at) && Date.now() - at < THROTTLE_MS;
+  } catch {
+    return false;
+  }
+}
+
 export async function refreshPlanSnapshot(): Promise<boolean> {
+  if (snapshotIsFresh()) return false;
+
   let parsed: ParsedUsage | null = null;
-  let raw = '';
-  // The probe occasionally comes back without the usage block; one retry covers it.
-  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-    try {
-      raw = await runUsageCommand();
-      parsed = parseUsageOutput(raw);
-    } catch (err) {
-      console.warn('[Pixel Agents] /usage probe failed:', err);
-      return false;
-    }
+  try {
+    parsed = parseUsageOutput(await runUsageCommand());
+  } catch (err) {
+    console.warn('[Pixel Agents] /usage probe failed:', err);
+    return false;
   }
   if (!parsed) {
-    console.warn(
-      '[Pixel Agents] could not parse /usage output:',
-      JSON.stringify(raw.slice(0, 300)),
-    );
+    // Measured: called again within ~1 minute, /usage prints the breakdown but
+    // omits the percentages. Nothing to do but wait for the next tick — retrying
+    // right away lands in the same window and fails identically.
+    console.log('[Pixel Agents] /usage has no fresh percentages yet; keeping the last snapshot');
     return false;
   }
 
