@@ -1,7 +1,14 @@
 import type { AgentRuntime } from './agentRuntime.js';
+import {
+  resolveAgentPermission,
+  sendAgentMessage,
+  setAgentSessionModel,
+  startAgentSession,
+  stopAgentSession,
+} from './agentSession.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
-import { setConfiguredModel } from './claudeSettings.js';
+import { getConfiguredModel, setConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
@@ -108,6 +115,8 @@ export function handleClientMessage(
       const model = msg.model as string | undefined;
       if (model) {
         const ok = setConfiguredModel(model);
+        // Also switch the running chat-panel session, which applies immediately.
+        setAgentSessionModel(model);
         console.log(
           ok
             ? `[Pixel Agents] Claude model set to ${model} (applies to new sessions)`
@@ -140,6 +149,28 @@ export function handleClientMessage(
 
     case 'killShellCommand':
       killShellCommand(store, msg.execId as string);
+      break;
+
+    case 'startAgentSession':
+      void startAgentSession(store, msg.cwd as string, getConfiguredModel()).catch((err) => {
+        store.broadcast({
+          type: 'agentEvent',
+          kind: 'result',
+          text: `세션 시작 실패: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      });
+      break;
+
+    case 'sendAgentMessage':
+      sendAgentMessage(store, msg.text as string);
+      break;
+
+    case 'agentPermissionDecision':
+      resolveAgentPermission(msg.requestId as string, msg.allow as boolean);
+      break;
+
+    case 'stopAgentSession':
+      stopAgentSession(store);
       break;
 
     case 'removeExternalAssetDirectory': {

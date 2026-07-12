@@ -28,6 +28,9 @@ export type ServerMessage =
   | PlanUsage
   | ShellOutput
   | ShellExit
+  | AgentSessionState
+  | AgentSessionEvent
+  | AgentPermissionRequest
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -60,7 +63,11 @@ export type ClientMessage =
   | RemoveExternalAssetDirectory
   | RequestDiagnostics
   | RunShellCommand
-  | KillShellCommand;
+  | KillShellCommand
+  | StartAgentSession
+  | SendAgentMessage
+  | AgentPermissionDecision
+  | StopAgentSession;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -210,6 +217,28 @@ export interface ShellExit {
   execId: string;
   exitCode?: number;
   error?: string;
+}
+
+export interface AgentSessionState {
+  type: 'agentSessionState';
+  running: boolean;
+  cwd: string;
+}
+
+export interface AgentSessionEvent {
+  type: 'agentEvent';
+  kind: AgentEventKind;
+  text: string;
+}
+
+export type AgentEventKind = 'user' | 'text' | 'tool' | 'result';
+
+export interface AgentPermissionRequest {
+  type: 'agentPermissionRequest';
+  requestId: string;
+  toolName: string;
+  title: string;
+  input: string;
 }
 
 export interface LayoutLoaded {
@@ -419,4 +448,24 @@ export interface RunShellCommand {
 export interface KillShellCommand {
   type: 'killShellCommand';
   execId: string;
+}
+
+export interface StartAgentSession {
+  type: 'startAgentSession';
+  cwd: string;
+}
+
+export interface SendAgentMessage {
+  type: 'sendAgentMessage';
+  text: string;
+}
+
+export interface AgentPermissionDecision {
+  type: 'agentPermissionDecision';
+  requestId: string;
+  allow: boolean;
+}
+
+export interface StopAgentSession {
+  type: 'stopAgentSession';
 }

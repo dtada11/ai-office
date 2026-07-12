@@ -4,24 +4,24 @@ import type { ServerMessage } from '../../../core/src/messages.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
 
-/** Left-side slide-out chat panel bridging to a server-side PowerShell.
- *  An arrow toggle on the left edge opens the panel; each submitted line is
- *  executed via RunShellCommand and stdout/stderr stream back into the log.
- *  In Claude mode the line is wrapped into `claude -p '지시'` so no command
- *  needs to be typed; the model comes from settings.json (token gauge dropdown). */
+/** Left-side slide-out chat panel.
+ *  Claude mode talks to a persistent Claude session running in the chosen
+ *  folder (server-side, via the Agent SDK), so context carries across
+ *  messages; tool calls that need approval surface as a card here.
+ *  Shell mode keeps the original one-off PowerShell bridge. */
 
-type EntryKind = 'cmd' | 'stdout' | 'stderr' | 'system';
-
-type InputMode = 'claude' | 'shell';
-
-/** Wrap text in a PowerShell single-quoted literal (no $ / backtick expansion). */
-function psQuote(text: string): string {
-  return `'${text.replace(/'/g, "''")}'`;
-}
+type EntryKind = 'cmd' | 'stdout' | 'stderr' | 'system' | 'user' | 'agent' | 'tool';
 
 interface Entry {
   kind: EntryKind;
   text: string;
+}
+
+interface PermissionRequest {
+  requestId: string;
+  toolName: string;
+  title: string;
+  input: string;
 }
 
 const KIND_CLASS: Record<EntryKind, string> = {
@@ -29,7 +29,14 @@ const KIND_CLASS: Record<EntryKind, string> = {
   stdout: 'text-text',
   stderr: 'text-red-400',
   system: 'text-text-muted',
+  user: 'text-accent-bright',
+  agent: 'text-text',
+  tool: 'text-text-muted',
 };
+
+type InputMode = 'claude' | 'shell';
+
+const CWD_STORAGE_KEY = 'pixel-agents.agentCwd';
 
 export function ChatPanel() {
   const [isOpen, setIsOpen] = useState(false);
@@ -37,6 +44,9 @@ export function ChatPanel() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [input, setInput] = useState('');
   const [runningExecId, setRunningExecId] = useState<string | null>(null);
+  const [cwd, setCwd] = useState(() => localStorage.getItem(CWD_STORAGE_KEY) ?? '');
+  const [sessionRunning, setSessionRunning] = useState(false);
+  const [permission, setPermission] = useState<PermissionRequest | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const execIdRef = useRef<string | null>(null);
 
@@ -44,7 +54,7 @@ export function ChatPanel() {
     setEntries((prev) => {
       const last = prev[prev.length - 1];
       // Merge consecutive chunks of the same stream to keep the list small.
-      if (last && last.kind === kind && kind !== 'cmd') {
+      if (last && last.kind === kind && kind !== 'cmd' && kind !== 'user') {
         return [...prev.slice(0, -1), { kind, text: last.text + text }];
       }
       return [...prev, { kind, text }];
@@ -63,26 +73,79 @@ export function ChatPanel() {
         }
         execIdRef.current = null;
         setRunningExecId(null);
+      } else if (msg.type === 'agentSessionState') {
+        setSessionRunning(msg.running);
+        if (msg.running) append('system', `— Claude 세션 시작 (${msg.cwd}) —\n`);
+        else append('system', '— Claude 세션 종료 —\n');
+      } else if (msg.type === 'agentEvent') {
+        if (msg.kind === 'user') append('user', `\n> ${msg.text}\n`);
+        else if (msg.kind === 'text') append('agent', msg.text);
+        else if (msg.kind === 'tool') append('tool', `\n[도구: ${msg.text}]\n`);
+        else if (msg.kind === 'result' && msg.text) append('stderr', `\n${msg.text}\n`);
+      } else if (msg.type === 'agentPermissionRequest') {
+        setPermission({
+          requestId: msg.requestId,
+          toolName: msg.toolName,
+          title: msg.title,
+          input: msg.input,
+        });
       }
     });
     return unsubscribe;
+  }, []);
+
+  // Auto-start the session on load when a folder was saved earlier.
+  useEffect(() => {
+    if (cwd) transport.send({ type: 'startAgentSession', cwd });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keep the log pinned to the bottom as output streams in.
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [entries]);
+  }, [entries, permission]);
+
+  const startSession = () => {
+    localStorage.setItem(CWD_STORAGE_KEY, cwd);
+    transport.send({ type: 'startAgentSession', cwd });
+  };
+
+  const stopSession = () => {
+    transport.send({ type: 'stopAgentSession' });
+  };
+
+  const decide = (allow: boolean) => {
+    if (!permission) return;
+    transport.send({
+      type: 'agentPermissionDecision',
+      requestId: permission.requestId,
+      allow,
+    });
+    append('tool', `[${permission.toolName}: ${allow ? '허용' : '거부'}]\n`);
+    setPermission(null);
+  };
 
   const run = () => {
     const text = input.trim();
-    if (!text || runningExecId) return;
-    const command = mode === 'claude' ? `claude -p ${psQuote(text)}` : text;
+    if (!text) return;
+
+    if (mode === 'claude') {
+      if (!sessionRunning) {
+        append('system', '먼저 폴더를 지정하고 세션을 시작하세요.\n');
+        return;
+      }
+      transport.send({ type: 'sendAgentMessage', text });
+      setInput('');
+      return;
+    }
+
+    if (runningExecId) return;
     const execId = crypto.randomUUID();
     execIdRef.current = execId;
     setRunningExecId(execId);
-    append('cmd', `> ${command}\n`);
-    transport.send({ type: 'runShellCommand', execId, command });
+    append('cmd', `> ${text}\n`);
+    transport.send({ type: 'runShellCommand', execId, command: text });
     setInput('');
   };
 
@@ -111,7 +174,7 @@ export function ChatPanel() {
     <div className="absolute left-10 top-10 bottom-10 z-20 pixel-panel p-8 flex flex-col gap-6 w-510 max-w-[70vw]">
       <div className="flex items-center justify-between gap-8">
         <span className="text-sm whitespace-nowrap">
-          {mode === 'claude' ? 'Claude에게 시키기' : '터미널 (PowerShell)'}
+          {mode === 'claude' ? 'Claude 세션' : '터미널 (PowerShell)'}
         </span>
         <div className="flex gap-4">
           <Button
@@ -128,6 +191,29 @@ export function ChatPanel() {
           </Button>
         </div>
       </div>
+
+      {mode === 'claude' && (
+        <div className="flex items-center gap-4">
+          <input
+            className="flex-1 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={cwd}
+            onChange={(e) => setCwd(e.target.value)}
+            placeholder="작업 폴더 (예: F:\SecondBrain)"
+            disabled={sessionRunning}
+            data-testid="agent-cwd-input"
+          />
+          {sessionRunning ? (
+            <Button variant="default" size="sm" onClick={stopSession}>
+              중지
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" onClick={startSession}>
+              시작
+            </Button>
+          )}
+        </div>
+      )}
+
       <div
         ref={logRef}
         className="flex-1 overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 font-mono text-xs whitespace-pre-wrap break-all"
@@ -136,10 +222,9 @@ export function ChatPanel() {
         {entries.length === 0 ? (
           <span className="text-text-muted">
             {mode === 'claude'
-              ? '지시 내용만 쓰면 claude -p 로 자동 실행됩니다.\n' +
-                '예: 이 폴더 요약해줘\n' +
-                '모델은 오른쪽 위 드롭다운에서 고른 것이 쓰입니다.\n' +
-                '셸 명령을 직접 치려면 위 [Claude] 버튼으로 모드를 바꾸세요.'
+              ? '작업 폴더를 지정하고 [시작]을 누르면 그 폴더에서 Claude 세션이 뜹니다.\n' +
+                '이후 지시 내용만 입력하면 됩니다. 대화 맥락은 이어집니다.\n' +
+                '파일 수정·명령 실행처럼 승인이 필요한 작업은 아래에 카드로 뜹니다.'
               : 'PowerShell 명령이 이 PC에서 그대로 실행됩니다.\n' + '예: git status / ls'}
           </span>
         ) : (
@@ -150,6 +235,24 @@ export function ChatPanel() {
           ))
         )}
       </div>
+
+      {permission && (
+        <div className="border-2 border-accent-bright rounded-none p-6 flex flex-col gap-4">
+          <span className="text-xs">
+            {permission.title || `Claude가 ${permission.toolName} 사용을 요청합니다`}
+          </span>
+          <span className="font-mono text-xs text-text-muted break-all">{permission.input}</span>
+          <div className="flex gap-4">
+            <Button variant="default" size="sm" onClick={() => decide(true)}>
+              허용
+            </Button>
+            <Button variant="default" size="sm" onClick={() => decide(false)}>
+              거부
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-4">
         <input
           className="flex-1 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
@@ -159,16 +262,18 @@ export function ChatPanel() {
             if (e.key === 'Enter') run();
           }}
           placeholder={
-            runningExecId
-              ? '실행 중…'
-              : mode === 'claude'
+            mode === 'claude'
+              ? sessionRunning
                 ? '지시 내용 입력 후 Enter'
+                : '세션을 먼저 시작하세요'
+              : runningExecId
+                ? '실행 중…'
                 : '명령 입력 후 Enter'
           }
-          disabled={runningExecId !== null}
+          disabled={mode === 'shell' && runningExecId !== null}
           data-testid="chat-input"
         />
-        {runningExecId ? (
+        {mode === 'shell' && runningExecId ? (
           <Button variant="default" size="sm" onClick={kill}>
             중단
           </Button>

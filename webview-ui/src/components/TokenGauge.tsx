@@ -140,7 +140,7 @@ export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }:
       </div>
       {pendingModel && (
         <span className="text-xs text-text-muted whitespace-nowrap">
-          → {pendingModel} 저장됨 (새 세션부터 적용)
+          → {pendingModel} (채팅 세션은 즉시, 터미널은 새 세션부터)
         </span>
       )}
       <div className="border-2 border-border rounded-none h-10 overflow-hidden">

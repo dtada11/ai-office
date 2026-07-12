@@ -103,6 +103,10 @@ components:
         # Shell bridge
         - $ref: '#/components/schemas/ShellOutput'
         - $ref: '#/components/schemas/ShellExit'
+        # Persistent Claude session (chat panel)
+        - $ref: '#/components/schemas/AgentSessionState'
+        - $ref: '#/components/schemas/AgentSessionEvent'
+        - $ref: '#/components/schemas/AgentPermissionRequest'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -142,6 +146,10 @@ components:
         - $ref: '#/components/schemas/RequestDiagnostics'
         - $ref: '#/components/schemas/RunShellCommand'
         - $ref: '#/components/schemas/KillShellCommand'
+        - $ref: '#/components/schemas/StartAgentSession'
+        - $ref: '#/components/schemas/SendAgentMessage'
+        - $ref: '#/components/schemas/AgentPermissionDecision'
+        - $ref: '#/components/schemas/StopAgentSession'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -499,6 +507,61 @@ components:
         error:
           type: string
           description: Present when the process could not be spawned or was killed.
+
+    AgentSessionState:
+      description: |
+        Whether the persistent Claude session (chat panel) is running, and the
+        folder it runs in. Broadcast on every start/stop.
+      type: object
+      additionalProperties: false
+      required: [type, running, cwd]
+      properties:
+        type:
+          const: agentSessionState
+        running:
+          type: boolean
+        cwd:
+          type: string
+
+    AgentEventKind:
+      type: string
+      enum: [user, text, tool, result]
+
+    AgentSessionEvent:
+      description: |
+        One piece of the persistent Claude session's transcript: the user's own
+        message echoed back, assistant text, a tool name, or a turn result.
+      type: object
+      additionalProperties: false
+      required: [type, kind, text]
+      properties:
+        type:
+          const: agentEvent
+        kind:
+          $ref: '#/components/schemas/AgentEventKind'
+        text:
+          type: string
+
+    AgentPermissionRequest:
+      description: |
+        A tool call in the persistent session needs approval. The session blocks
+        until the client answers with AgentPermissionDecision (or it times out).
+      type: object
+      additionalProperties: false
+      required: [type, requestId, toolName, title, input]
+      properties:
+        type:
+          const: agentPermissionRequest
+        requestId:
+          type: string
+        toolName:
+          type: string
+        title:
+          type: string
+          description: Prompt sentence rendered by the SDK, when available.
+        input:
+          type: string
+          description: Truncated JSON of the tool input, for display.
 
     LayoutLoaded:
       description: |
@@ -917,6 +980,54 @@ components:
           const: killShellCommand
         execId:
           type: string
+
+    StartAgentSession:
+      description: |
+        Start (or restart) the persistent Claude session in the given folder.
+        Standalone mode only; runs on the server host under the local Claude
+        Code login. Tool calls needing approval go through AgentPermissionRequest.
+      type: object
+      additionalProperties: false
+      required: [type, cwd]
+      properties:
+        type:
+          const: startAgentSession
+        cwd:
+          type: string
+          description: Working directory the session runs in.
+
+    SendAgentMessage:
+      description: Send one user message to the running Claude session.
+      type: object
+      additionalProperties: false
+      required: [type, text]
+      properties:
+        type:
+          const: sendAgentMessage
+        text:
+          type: string
+
+    AgentPermissionDecision:
+      description: Allow or deny a pending tool call, answering AgentPermissionRequest.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, allow]
+      properties:
+        type:
+          const: agentPermissionDecision
+        requestId:
+          type: string
+        allow:
+          type: boolean
+
+    StopAgentSession:
+      description: Terminate the running Claude session.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: stopAgentSession
 
     ExportLayout:
       description: Trigger layout export via host-native save dialog.

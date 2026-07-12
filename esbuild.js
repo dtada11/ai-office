@@ -122,7 +122,14 @@ async function buildCli() {
     sourcemap: !production,
     platform: 'node',
     outfile: 'dist/cli.js',
-    external: ['fastify', '@fastify/websocket', '@fastify/static', '@fastify/cors'],
+    external: [
+      'fastify',
+      '@fastify/websocket',
+      '@fastify/static',
+      '@fastify/cors',
+      // ESM-only; loaded via dynamic import() from the CJS bundle.
+      '@anthropic-ai/claude-agent-sdk',
+    ],
     define: versionDefine,
     logLevel: 'silent',
   });

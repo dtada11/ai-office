@@ -11,6 +11,7 @@
 import * as path from 'path';
 
 import { AgentRuntime } from './agentRuntime.js';
+import { disposeAgentSession } from './agentSession.js';
 import { AgentStateStore } from './agentStateStore.js';
 import {
   loadCharacterSprites,
@@ -177,6 +178,7 @@ async function main(): Promise<void> {
       console.log('\nShutting down...');
       clearInterval(planUsageInterval);
       disposeShellRunner();
+      disposeAgentSession();
       runtime.dispose();
       server.stop();
       process.exit(0);
