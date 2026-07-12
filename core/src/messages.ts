@@ -224,6 +224,7 @@ export interface AgentSessionState {
   type: 'agentSessionState';
   running: boolean;
   cwd: string;
+  model?: string;
 }
 
 export interface AgentSessionEvent {

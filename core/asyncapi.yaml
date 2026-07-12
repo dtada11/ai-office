@@ -511,8 +511,9 @@ components:
 
     AgentSessionState:
       description: |
-        Whether the persistent Claude session (chat panel) is running, and the
-        folder it runs in. Broadcast on every start/stop.
+        Whether the persistent Claude session (chat panel) is running, the
+        folder it runs in, and the model it actually answered with (read back
+        from the session's own replies, so a model switch is visible).
       type: object
       additionalProperties: false
       required: [type, running, cwd]
@@ -523,6 +524,9 @@ components:
           type: boolean
         cwd:
           type: string
+        model:
+          type: string
+          description: Model of the session's latest reply; empty until it answers.
 
     AgentEventKind:
       type: string

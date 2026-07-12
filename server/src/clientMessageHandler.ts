@@ -118,7 +118,7 @@ export function handleClientMessage(
       if (model) {
         const ok = setConfiguredModel(model);
         // Also switch the running chat-panel session, which applies immediately.
-        setAgentSessionModel(model);
+        setAgentSessionModel(store, model);
         console.log(
           ok
             ? `[Pixel Agents] Claude model set to ${model} (applies to new sessions)`

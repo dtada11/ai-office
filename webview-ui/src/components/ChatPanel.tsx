@@ -74,9 +74,17 @@ export function ChatPanel() {
         execIdRef.current = null;
         setRunningExecId(null);
       } else if (msg.type === 'agentSessionState') {
-        setSessionRunning(msg.running);
-        if (msg.running) append('system', `— Claude 세션 시작 (${msg.cwd}) —\n`);
-        else append('system', '— Claude 세션 종료 —\n');
+        // This also fires when the session reports a model switch — only log
+        // the start/stop transition, not every state broadcast.
+        setSessionRunning((prev) => {
+          if (prev !== msg.running) {
+            append(
+              'system',
+              msg.running ? `— Claude 세션 시작 (${msg.cwd}) —\n` : '— Claude 세션 종료 —\n',
+            );
+          }
+          return msg.running;
+        });
       } else if (msg.type === 'agentEvent') {
         if (msg.kind === 'user') append('user', `\n> ${msg.text}\n`);
         else if (msg.kind === 'text') append('agent', msg.text);

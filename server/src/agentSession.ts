@@ -34,6 +34,8 @@ const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 interface Session {
   q: Query;
   cwd: string;
+  /** Model of the latest reply — read back from the session, not what we asked for. */
+  model: string;
   /** Resolves the generator's pending `next()` with the message the user typed. */
   pushMessage: (text: string) => void;
 }
@@ -84,6 +86,7 @@ function broadcastState(store: AgentStateStore): void {
     type: 'agentSessionState',
     running: session !== null,
     cwd: session?.cwd ?? '',
+    model: session?.model ?? '',
   });
 }
 
@@ -92,7 +95,12 @@ function broadcastMessage(store: AgentStateStore, msg: Record<string, unknown>):
   const type = msg.type as string;
 
   if (type === 'assistant') {
-    const message = msg.message as { content?: unknown[] } | undefined;
+    const message = msg.message as { content?: unknown[]; model?: string } | undefined;
+    // The reply names the model that produced it — that's the proof a switch took.
+    if (session && message?.model && message.model !== session.model) {
+      session.model = message.model;
+      broadcastState(store);
+    }
     for (const block of message?.content ?? []) {
       const b = block as { type: string; text?: string; name?: string };
       if (b.type === 'text' && b.text) {
@@ -151,7 +159,7 @@ export async function startAgentSession(
     },
   });
 
-  session = { q, cwd, pushMessage: input.push };
+  session = { q, cwd, model: '', pushMessage: input.push };
   broadcastState(store);
   console.log(`[Pixel Agents] Agent session started in ${cwd}`);
 
@@ -188,9 +196,17 @@ export function resolveAgentPermission(requestId: string, allow: boolean): void 
   resolve(allow ? { behavior: 'allow' } : { behavior: 'deny', message: '사용자가 거부했습니다.' });
 }
 
-/** Switch the model of the running session (no-op when no session). */
-export function setAgentSessionModel(model: string): void {
-  void session?.q.setModel(model);
+/** Switch the model of the running session (no-op when no session). The UI
+ *  confirms the switch once the next reply comes back carrying the new model. */
+export function setAgentSessionModel(store: AgentStateStore, model: string): void {
+  if (!session) return;
+  void session.q.setModel(model).catch((err) => {
+    store.broadcast({
+      type: 'agentEvent',
+      kind: 'result',
+      text: `모델 변경 실패: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  });
 }
 
 export function stopAgentSession(store: AgentStateStore): void {

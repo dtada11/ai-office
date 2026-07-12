@@ -93,9 +93,17 @@ interface TokenGaugeProps {
   selectedAgent: number | null;
   agentTokenInfo: Record<number, AgentTokenInfo>;
   planUsage: PlanUsageInfo | null;
+  /** Model the chat-panel session actually replied with; '' when none. */
+  sessionModel: string;
 }
 
-export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }: TokenGaugeProps) {
+export function TokenGauge({
+  agents,
+  selectedAgent,
+  agentTokenInfo,
+  planUsage,
+  sessionModel,
+}: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -131,7 +139,7 @@ export function TokenGauge({ agents, selectedAgent, agentTokenInfo, planUsage }:
       <div className="relative flex items-center justify-between gap-8">
         <span className="text-sm text-text-muted whitespace-nowrap">모델</span>
         <Button variant="default" size="sm" onClick={() => setIsOpen((v) => !v)}>
-          {displayModel(info?.model)} ▾
+          {displayModel(sessionModel || info?.model)} ▾
         </Button>
         {isOpen && (
           <div className="absolute top-full right-0 pt-4 z-30">

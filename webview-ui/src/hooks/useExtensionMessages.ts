@@ -74,6 +74,8 @@ interface ExtensionMessageState {
   hooksInfoShown: boolean;
   agentTokenInfo: Record<number, AgentTokenInfo>;
   planUsage: PlanUsageInfo | null;
+  /** Model of the chat-panel session's latest reply; '' when it hasn't answered. */
+  sessionModel: string;
 }
 
 export interface AgentTokenInfo {
@@ -130,6 +132,8 @@ export function useExtensionMessages(
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
   const [agentTokenInfo, setAgentTokenInfo] = useState<Record<number, AgentTokenInfo>>({});
   const [planUsage, setPlanUsage] = useState<PlanUsageInfo | null>(null);
+  /** Model the chat-panel session actually replied with ('' until it answers). */
+  const [sessionModel, setSessionModel] = useState('');
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -600,6 +604,8 @@ export function useExtensionMessages(
           weeklyResetsAt: msg.weeklyResetsAt as string | undefined,
           calibrated: msg.calibrated as boolean,
         });
+      } else if (msg.type === 'agentSessionState') {
+        setSessionModel((msg.model as string | undefined) ?? '');
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -630,5 +636,6 @@ export function useExtensionMessages(
     hooksInfoShown,
     agentTokenInfo,
     planUsage,
+    sessionModel,
   };
 }
