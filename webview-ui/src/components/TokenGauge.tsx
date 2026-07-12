@@ -105,8 +105,9 @@ export function TokenGauge({
   sessionModel,
 }: TokenGaugeProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [pendingModel, setPendingModel] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  /** What the user just picked — shown until the session reports what it used. */
+  const [picked, setPicked] = useState('');
 
   // The server answers with a fresh planUsage broadcast; clear the spinner then.
   useEffect(() => {
@@ -128,9 +129,11 @@ export function TokenGauge({
   const remaining = Math.max(0, limit - used);
   const ratio = Math.min(1, used / limit);
 
-  const handleSelect = (id: string, label: string) => {
+  // No "saved" notice: the label itself is the confirmation — it shows the
+  // pick right away, then the model the session actually replied with.
+  const handleSelect = (id: string) => {
     transport.send({ type: 'setClaudeModel', model: id });
-    setPendingModel(label);
+    setPicked(id);
     setIsOpen(false);
   };
 
@@ -139,7 +142,7 @@ export function TokenGauge({
       <div className="relative flex items-center justify-between gap-8">
         <span className="text-sm text-text-muted whitespace-nowrap">모델</span>
         <Button variant="default" size="sm" onClick={() => setIsOpen((v) => !v)}>
-          {displayModel(sessionModel || info?.model)} ▾
+          {displayModel(sessionModel || picked || info?.model)} ▾
         </Button>
         {isOpen && (
           <div className="absolute top-full right-0 pt-4 z-30">
@@ -147,7 +150,7 @@ export function TokenGauge({
               {MODEL_OPTIONS.map((m) => (
                 <button
                   key={m.id}
-                  onClick={() => handleSelect(m.id, m.label)}
+                  onClick={() => handleSelect(m.id)}
                   className="block w-full text-left py-2 px-12 bg-transparent border-none rounded-none cursor-pointer whitespace-nowrap hover:bg-btn-bg"
                 >
                   {m.label}
@@ -157,11 +160,6 @@ export function TokenGauge({
           </div>
         )}
       </div>
-      {pendingModel && (
-        <span className="text-xs text-text-muted whitespace-nowrap">
-          → {pendingModel} (채팅 세션은 즉시, 터미널은 새 세션부터)
-        </span>
-      )}
       <div className="border-2 border-border rounded-none h-10 overflow-hidden">
         <div
           className="h-full"
