@@ -7,9 +7,17 @@ import { Button } from './ui/Button.js';
 /** Left-side slide-out chat panel bridging to a server-side PowerShell.
  *  An arrow toggle on the left edge opens the panel; each submitted line is
  *  executed via RunShellCommand and stdout/stderr stream back into the log.
- *  Claude Code work runs through the same bridge, e.g. `claude -p "지시"`. */
+ *  In Claude mode the line is wrapped into `claude -p '지시'` so no command
+ *  needs to be typed; the model comes from settings.json (token gauge dropdown). */
 
 type EntryKind = 'cmd' | 'stdout' | 'stderr' | 'system';
+
+type InputMode = 'claude' | 'shell';
+
+/** Wrap text in a PowerShell single-quoted literal (no $ / backtick expansion). */
+function psQuote(text: string): string {
+  return `'${text.replace(/'/g, "''")}'`;
+}
 
 interface Entry {
   kind: EntryKind;
@@ -25,6 +33,7 @@ const KIND_CLASS: Record<EntryKind, string> = {
 
 export function ChatPanel() {
   const [isOpen, setIsOpen] = useState(false);
+  const [mode, setMode] = useState<InputMode>('claude');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [input, setInput] = useState('');
   const [runningExecId, setRunningExecId] = useState<string | null>(null);
@@ -66,8 +75,9 @@ export function ChatPanel() {
   }, [entries]);
 
   const run = () => {
-    const command = input.trim();
-    if (!command || runningExecId) return;
+    const text = input.trim();
+    if (!text || runningExecId) return;
+    const command = mode === 'claude' ? `claude -p ${psQuote(text)}` : text;
     const execId = crypto.randomUUID();
     execIdRef.current = execId;
     setRunningExecId(execId);
@@ -98,12 +108,25 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="absolute left-10 top-10 bottom-10 z-20 pixel-panel p-8 flex flex-col gap-6 w-340 max-w-[70vw]">
+    <div className="absolute left-10 top-10 bottom-10 z-20 pixel-panel p-8 flex flex-col gap-6 w-510 max-w-[70vw]">
       <div className="flex items-center justify-between gap-8">
-        <span className="text-sm whitespace-nowrap">터미널 (PowerShell)</span>
-        <Button variant="default" size="sm" onClick={() => setIsOpen(false)} title="닫기">
-          ◀
-        </Button>
+        <span className="text-sm whitespace-nowrap">
+          {mode === 'claude' ? 'Claude에게 시키기' : '터미널 (PowerShell)'}
+        </span>
+        <div className="flex gap-4">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setMode(mode === 'claude' ? 'shell' : 'claude')}
+            title={mode === 'claude' ? '셸 명령 모드로 전환' : 'Claude 모드로 전환'}
+            data-testid="chat-mode-toggle"
+          >
+            {mode === 'claude' ? 'Claude' : '셸'}
+          </Button>
+          <Button variant="default" size="sm" onClick={() => setIsOpen(false)} title="닫기">
+            ◀
+          </Button>
+        </div>
       </div>
       <div
         ref={logRef}
@@ -112,9 +135,12 @@ export function ChatPanel() {
       >
         {entries.length === 0 ? (
           <span className="text-text-muted">
-            {'PowerShell 명령이 이 PC에서 그대로 실행됩니다.\n'}
-            {'Claude에게 일 시키기: claude -p "지시 내용"\n'}
-            {'예: git status / ls / claude -p "이 폴더 요약해줘"'}
+            {mode === 'claude'
+              ? '지시 내용만 쓰면 claude -p 로 자동 실행됩니다.\n' +
+                '예: 이 폴더 요약해줘\n' +
+                '모델은 오른쪽 위 드롭다운에서 고른 것이 쓰입니다.\n' +
+                '셸 명령을 직접 치려면 위 [Claude] 버튼으로 모드를 바꾸세요.'
+              : 'PowerShell 명령이 이 PC에서 그대로 실행됩니다.\n' + '예: git status / ls'}
           </span>
         ) : (
           entries.map((e, i) => (
@@ -132,7 +158,13 @@ export function ChatPanel() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') run();
           }}
-          placeholder={runningExecId ? '실행 중…' : '명령 입력 후 Enter'}
+          placeholder={
+            runningExecId
+              ? '실행 중…'
+              : mode === 'claude'
+                ? '지시 내용 입력 후 Enter'
+                : '명령 입력 후 Enter'
+          }
           disabled={runningExecId !== null}
           data-testid="chat-input"
         />

@@ -65,6 +65,10 @@ export function runShellCommand(
     return;
   }
 
+  // Nothing is ever written to stdin; close it so commands that read stdin
+  // (e.g. `claude -p`) don't stall waiting for input that never comes.
+  proc.stdin.end();
+
   const timer = setTimeout(() => {
     broadcastOutput(store, execId, 'system', `10분 제한 시간 초과 — 프로세스를 종료합니다.\n`);
     proc.kill('SIGTERM');
