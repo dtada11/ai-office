@@ -160,6 +160,7 @@ export function handleClientMessage(
         store,
         msg.name as string,
         msg.cwd as string,
+        msg.role as 'vp' | 'staff',
         getConfiguredModel(),
         runtime,
       ).catch((err) => {

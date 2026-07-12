@@ -525,10 +525,17 @@ components:
           items:
             $ref: '#/components/schemas/EmployeeInfo'
 
+    EmployeeRole:
+      type: string
+      description: |
+        vp = the user's own assistant, owns the top folder and is the only one
+        who may delegate. staff = owns one folder and does the work.
+      enum: [vp, staff]
+
     EmployeeInfo:
       type: object
       additionalProperties: false
-      required: [agentId, name, cwd]
+      required: [agentId, name, cwd, role]
       properties:
         agentId:
           type: integer
@@ -538,6 +545,8 @@ components:
         cwd:
           type: string
           description: The folder this employee is responsible for.
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
         model:
           type: string
           description: Model of the employee's latest reply; empty until it answers.
@@ -1019,7 +1028,7 @@ components:
         AgentPermissionRequest.
       type: object
       additionalProperties: false
-      required: [type, name, cwd]
+      required: [type, name, cwd, role]
       properties:
         type:
           const: hireEmployee
@@ -1028,6 +1037,8 @@ components:
         cwd:
           type: string
           description: The folder this employee is responsible for.
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
 
     FireEmployee:
       description: End an employee's session and remove their character.

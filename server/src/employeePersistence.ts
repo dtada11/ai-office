@@ -15,6 +15,8 @@ const ROSTER_PATH = path.join(os.homedir(), LAYOUT_FILE_DIR, 'employees.json');
 export interface SavedEmployee {
   name: string;
   cwd: string;
+  /** vp = the boss's assistant, the only one who may delegate. */
+  role: 'vp' | 'staff';
 }
 
 export function readEmployees(): SavedEmployee[] {

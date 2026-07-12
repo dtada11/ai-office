@@ -229,10 +229,13 @@ export interface EmployeeInfo {
   agentId: number;
   name: string;
   cwd: string;
+  role: EmployeeRole;
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
 }
+
+export type EmployeeRole = 'vp' | 'staff';
 
 export interface AgentSessionEvent {
   type: 'agentEvent';
@@ -465,6 +468,7 @@ export interface HireEmployee {
   type: 'hireEmployee';
   name: string;
   cwd: string;
+  role: EmployeeRole;
 }
 
 export interface FireEmployee {

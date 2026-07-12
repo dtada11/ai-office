@@ -88,6 +88,7 @@ export interface EmployeeInfo {
   agentId: number;
   name: string;
   cwd: string;
+  role: 'vp' | 'staff';
   model?: string;
   contextTokens?: number;
   contextLimit?: number;

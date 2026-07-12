@@ -12,22 +12,29 @@
  * through askPermission, which asks the webview and waits.
  */
 
+import type { EmployeeRole } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import { ClaudeEmployee, type Employee, type EmployeeEvent } from './employee.js';
+import { ClaudeEmployee, type Delegation, type Employee, type EmployeeEvent } from './employee.js';
 import { readEmployees, writeEmployees } from './employeePersistence.js';
 import type { AgentState } from './types.js';
 
 /** How long a permission request waits for the user before being denied. */
 const PERMISSION_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** How long the VP waits for a team member before giving up on that delegation. */
+const DELEGATION_TIMEOUT_MS = 15 * 60 * 1000;
+
 interface Staff {
   employee: Employee;
   name: string;
   cwd: string;
+  role: EmployeeRole;
   model: string;
   contextTokens: number;
   contextLimit: number;
+  /** Set while the VP is waiting on this employee: collect their answer, then resolve. */
+  delegation?: { answer: string; resolve: (answer: string) => void };
 }
 
 const staff = new Map<number, Staff>();
@@ -69,6 +76,7 @@ function broadcastStaff(store: AgentStateStore): void {
       agentId,
       name: s.name,
       cwd: s.cwd,
+      role: s.role,
       model: s.model,
       contextTokens: s.contextTokens,
       contextLimit: s.contextLimit,
@@ -98,12 +106,21 @@ function onEvent(
 
     case 'text':
     case 'tool':
+      // While the VP is waiting on this employee, their answer is also the
+      // delegation's return value — collect it as it streams.
+      if (event.kind === 'text' && current.delegation) current.delegation.answer += event.text;
       store.broadcast({ type: 'agentEvent', agentId, kind: event.kind, text: event.text });
       break;
 
-    case 'result':
+    case 'result': {
       store.broadcast({ type: 'agentEvent', agentId, kind: 'result', text: event.text });
+      const waiting = current.delegation;
+      if (waiting) {
+        current.delegation = undefined;
+        waiting.resolve(waiting.answer.trim() || '(팀원이 답을 내놓지 않았습니다)');
+      }
       break;
+    }
 
     case 'usage':
       current.model = event.model;
@@ -150,10 +167,58 @@ function askPermission(
   });
 }
 
+/** The VP's view of the staff, and the way work reaches them. */
+function delegationFor(store: AgentStateStore): Delegation {
+  return {
+    listStaff: () => {
+      const team = [...staff.values()].filter((s) => s.role === 'staff');
+      if (team.length === 0) return '팀원이 없습니다.';
+      return team.map((s) => `- ${s.name} (담당 폴더: ${s.cwd})`).join('\n');
+    },
+
+    delegate: (name, instruction) =>
+      new Promise((resolve) => {
+        const entry = [...staff.entries()].find(
+          ([, s]) => s.role === 'staff' && s.name === name.trim(),
+        );
+        if (!entry) {
+          resolve(`"${name}" 이라는 팀원이 없습니다. list_staff로 확인하세요.`);
+          return;
+        }
+        const [agentId, member] = entry;
+        if (member.delegation) {
+          resolve(`${member.name}은(는) 지금 다른 작업 중입니다. 끝난 뒤에 다시 시키세요.`);
+          return;
+        }
+
+        const timer = setTimeout(() => {
+          if (member.delegation) {
+            member.delegation = undefined;
+            resolve(
+              `${member.name}이(가) 15분 안에 끝내지 못했습니다. 아직 작업 중일 수 있습니다.`,
+            );
+          }
+        }, DELEGATION_TIMEOUT_MS);
+
+        member.delegation = {
+          answer: '',
+          resolve: (answer) => {
+            clearTimeout(timer);
+            resolve(answer);
+          },
+        };
+        // Goes through the normal path, so the office shows the work happening and
+        // any approval the team member needs still lands on the user.
+        sendToEmployee(store, agentId, instruction);
+      }),
+  };
+}
+
 export async function hireEmployee(
   store: AgentStateStore,
   name: string,
   cwd: string,
+  role: EmployeeRole,
   model?: string,
   runtime?: AgentRuntime,
 ): Promise<void> {
@@ -169,11 +234,19 @@ export async function hireEmployee(
     askPermission: (ask) => askPermission(store, agentId, ask),
   });
 
-  staff.set(agentId, { employee, name, cwd, model: '', contextTokens: 0, contextLimit: 0 });
-  await employee.start(model);
+  staff.set(agentId, {
+    employee,
+    name,
+    cwd,
+    role,
+    model: '',
+    contextTokens: 0,
+    contextLimit: 0,
+  });
+  await employee.start(model, role === 'vp' ? delegationFor(store) : undefined);
   broadcastStaff(store);
   saveStaff();
-  console.log(`[Pixel Agents] Hired "${name}" (agent ${agentId}) in ${cwd}`);
+  console.log(`[Pixel Agents] Hired "${name}" (${role}, agent ${agentId}) in ${cwd}`);
 }
 
 export function fireEmployee(store: AgentStateStore, agentId: number): void {
@@ -222,7 +295,7 @@ export function sendStaffTo(store: AgentStateStore): void {
 }
 
 function saveStaff(): void {
-  writeEmployees([...staff.values()].map((s) => ({ name: s.name, cwd: s.cwd })));
+  writeEmployees([...staff.values()].map((s) => ({ name: s.name, cwd: s.cwd, role: s.role })));
 }
 
 /** Re-hire everyone from the roster when the office opens. */
@@ -232,7 +305,7 @@ export async function rehireSavedEmployees(
   runtime?: AgentRuntime,
 ): Promise<void> {
   for (const saved of readEmployees()) {
-    await hireEmployee(store, saved.name, saved.cwd, model, runtime);
+    await hireEmployee(store, saved.name, saved.cwd, saved.role ?? 'staff', model, runtime);
   }
 }
 

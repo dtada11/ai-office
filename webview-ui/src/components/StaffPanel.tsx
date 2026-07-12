@@ -15,12 +15,22 @@ export function StaffPanel({ employees }: StaffPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
+  const [isVp, setIsVp] = useState(false);
+
+  // Only the VP may delegate, so there is only ever one of them.
+  const hasVp = employees.some((e) => e.role === 'vp');
 
   const hire = () => {
     if (!name.trim() || !cwd.trim()) return;
-    transport.send({ type: 'hireEmployee', name: name.trim(), cwd: cwd.trim() });
+    transport.send({
+      type: 'hireEmployee',
+      name: name.trim(),
+      cwd: cwd.trim(),
+      role: isVp && !hasVp ? 'vp' : 'staff',
+    });
     setName('');
     setCwd('');
+    setIsVp(false);
   };
 
   if (!isOpen) {
@@ -49,7 +59,10 @@ export function StaffPanel({ employees }: StaffPanelProps) {
           {employees.map((e) => (
             <div key={e.agentId} className="flex items-center justify-between gap-8">
               <div className="flex flex-col">
-                <span className="text-xs">{e.name}</span>
+                <span className="text-xs">
+                  {e.name}
+                  {e.role === 'vp' ? ' (부사장)' : ''}
+                </span>
                 <span className="font-mono text-xs text-text-muted break-all">{e.cwd}</span>
               </div>
               <Button
@@ -83,6 +96,17 @@ export function StaffPanel({ employees }: StaffPanelProps) {
           placeholder="담당 폴더 (예: F:\Projects\ai-office)"
           data-testid="hire-cwd"
         />
+        {!hasVp && (
+          <label className="flex items-center gap-4 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isVp}
+              onChange={(e) => setIsVp(e.target.checked)}
+              data-testid="hire-vp"
+            />
+            부사장으로 (팀원에게 일을 시킬 수 있음)
+          </label>
+        )}
         <Button variant="default" size="sm" onClick={hire}>
           고용
         </Button>

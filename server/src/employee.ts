@@ -8,6 +8,8 @@
  * writing a second implementation, not touching the office.
  */
 
+import { z } from 'zod';
+
 import { getContextLimit } from './claudeSettings.js';
 
 type Sdk = typeof import('@anthropic-ai/claude-agent-sdk', {
@@ -58,12 +60,20 @@ export interface EmployeeHost {
   askPermission(ask: PermissionAsk): Promise<boolean>;
 }
 
+/** What the VP can do that staff cannot: see the staff, and hand work to them.
+ *  Passing this in is what makes an employee a VP — nobody else gets the tools. */
+export interface Delegation {
+  listStaff(): string;
+  /** Resolves with the team member's answer once their turn finishes. */
+  delegate(name: string, instruction: string): Promise<string>;
+}
+
 export interface Employee {
   readonly name: string;
   readonly cwd: string;
   /** Set once the session reports it; the office keys its character off this. */
   readonly sessionId: string;
-  start(model?: string): Promise<void>;
+  start(model?: string, delegation?: Delegation): Promise<void>;
   send(text: string): void;
   setModel(model: string): Promise<void>;
   stop(): void;
@@ -84,16 +94,23 @@ export class ClaudeEmployee implements Employee {
     private readonly host: EmployeeHost,
   ) {}
 
-  async start(model?: string): Promise<void> {
+  async start(model?: string, delegation?: Delegation): Promise<void> {
     const input = createInputStream();
-    const { query } = await importSdk();
+    const sdk = await importSdk();
+    const { query } = sdk;
 
     this.q = query({
       prompt: input.stream,
       options: {
         cwd: this.cwd,
         model,
+        ...(delegation ? { mcpServers: { office: officeTools(sdk, delegation) } } : {}),
         canUseTool: async (toolName, toolInput, options) => {
+          // Delegating is the VP's job, not a privileged act — never ask for it.
+          // Whatever the team member then does still needs the user's approval.
+          if (toolName.startsWith('mcp__office__')) {
+            return { behavior: 'allow' } as SdkPermissionResult;
+          }
           const allowed = await this.host.askPermission({
             requestId: options.requestId,
             toolName,
@@ -207,6 +224,30 @@ export class ClaudeEmployee implements Employee {
     this.q = null;
     this.push = null;
   }
+}
+
+/** The VP's own tools, served in-process. Staff never see these — that is what
+ *  keeps delegation from spreading down the org chart. */
+function officeTools(sdk: Sdk, delegation: Delegation) {
+  const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
+
+  return sdk.createSdkMcpServer({
+    name: 'office',
+    tools: [
+      sdk.tool('list_staff', '팀원 목록과 각자 담당 폴더를 확인한다.', {}, async () =>
+        text(delegation.listStaff()),
+      ),
+      sdk.tool(
+        'delegate',
+        '팀원에게 작업을 시키고, 그 팀원이 끝낼 때까지 기다렸다가 결과를 받는다.',
+        {
+          name: z.string().describe('팀원 이름 (list_staff로 확인)'),
+          instruction: z.string().describe('그 팀원에게 줄 지시. 담당 폴더 기준으로 씀'),
+        },
+        async (args) => text(await delegation.delegate(args.name, args.instruction)),
+      ),
+    ],
+  });
 }
 
 /** Async iterable the SDK pulls user messages from; `push` feeds it. Keeping the
