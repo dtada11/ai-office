@@ -2,6 +2,20 @@
 
 Pixel art office where AI agents (Claude Code terminals today, any tool tomorrow) become animated characters. Ships as a **VS Code extension** and an **`npx pixel-agents` standalone CLI** from the same source tree.
 
+## ⚠️ 이 저장소는 포크다 — "AI 오피스" (korean-ui 브랜치)
+
+이 문서의 아래 내용은 **원본(upstream) pixel-agents 기준**이고 여전히 대부분 유효하지만, 이 포크(`origin` = github.com/dtada11/ai-office, 작업 브랜치 `korean-ui`)에는 원본에 없는 기능 계층이 얹혀 있다. 이 포크에서 코딩할 때 먼저 알아야 할 것:
+
+- **직원 = 세션 = 캐릭터** — `server/src/employee.ts`(어댑터 경계 — Agent SDK 타입이 이 파일 밖으로 못 나감) + `server/src/employees.ts`(직원 레지스트리, agentId 키). 고용하면 Claude Agent SDK 상주 세션이 열리고 캐릭터를 **직접 생성**한다(폴더 감시 미등록 — 터미널 세션 혼입 방지). 승인 대기는 `canUseTool`→웹뷰 결재 카드, 타임아웃 30분.
+- **직급·위임** — 부사장(vp) 세션에만 인프로세스 MCP 도구 `list_staff`/`delegate` 주입. 위임 타임아웃 15분.
+- **인증 3모드** — `server/src/aiProvider.ts`: subscription(기본)/oauthToken/apiKey. 사무실 기본값(`~/.pixel-agents/ai-provider.json`) + 직원별 덮어쓰기. `buildEnv()`가 SDK `options.env`를 조립 (⚠️ SDK env는 병합이 아니라 전체 교체 — `process.env` spread 필수).
+- **게이지** — `planUsage.ts` + `usageProbe.ts`(`claude -p --no-session-persistence /usage` 실측, 2분 주기, 1분 스로틀 주의), `claudeSettings.ts`.
+- **웹뷰 추가분** — `EmployeeChat.tsx`(직원별 채팅창, 드래그 이동), `StaffPanel.tsx`(직원 관리), `TokenGauge.tsx`, `chatWindowPosition.ts`, `models.ts`. UI 전체 한글화.
+- **테스트 기준선** — 서버 테스트 9건이 원래 실패(툴 상태 문구 한글화 후 영어 기대값 방치 + mockClaudeRunner 타임아웃). 이보다 늘지 않으면 회귀 없음.
+- **커밋 메시지는 한글.** 설계 문서·작업 로그의 원본은 볼트 `F:\SecondBrain\200 프로젝트작업대\210 Projects\AI 사무실\`.
+
+아래 원본 레퍼런스 중 이 포크에서 어긋나는 부분: Project Identity(우리는 별도 저장소), 26/18개 메시지 수(직원 관련 메시지 추가됨), webview 컴포넌트 목록.
+
 ## Architecture
 
 Strict layering: `core/` depends on nothing; `server/` depends only on `core/`; `webview-ui/` depends only on `core/`; `adapters/vscode/` depends on `core/` and `server/`. The standalone CLI never imports `adapters/vscode/` and vice versa.
