@@ -1,12 +1,12 @@
 {
-  "name": "pixel-agents",
-  "displayName": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
+  "name": "ai-office",
+  "displayName": "AI 오피스",
+  "description": "픽셀 오피스에서 AI 직원을 고용해 일 시키는 로컬 도구 (Pixel Agents 기반)",
   "version": "1.3.0",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pixel-agents-hq/pixel-agents"
+    "url": "https://github.com/dtada11/ai-office"
   },
   "workspaces": ["server", "webview-ui"],
   "icon": "icon.png",
