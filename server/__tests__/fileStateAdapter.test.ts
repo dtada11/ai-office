@@ -5,23 +5,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PersistedAgent } from '../../core/src/schemas.js';
 import { FileStateAdapter } from '../src/fileStateAdapter.js';
+import { redirectHome, restoreHome, type SavedHome } from './testHome.js';
 
 describe('FileStateAdapter', () => {
   let tempHome: string;
-  let originalHome: string | undefined;
+  let savedHome: SavedHome;
 
   beforeEach(() => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-adapter-test-'));
-    originalHome = process.env.HOME;
-    process.env.HOME = tempHome;
+    savedHome = redirectHome(tempHome);
   });
 
   afterEach(() => {
-    if (originalHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = originalHome;
-    }
+    restoreHome(savedHome);
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 

@@ -13,6 +13,7 @@ vi.mock('vscode', () => ({
 import { migrateVsCodeState } from '../../adapters/vscode/migrateVsCodeState.js';
 import { FileStateAdapter } from '../src/fileStateAdapter.js';
 import { readLayoutFromFile, writeLayoutToFile } from '../src/layoutPersistence.js';
+import { redirectHome, restoreHome, type SavedHome } from './testHome.js';
 
 /** Lightweight in-memory Memento for workspaceState/globalState simulation. */
 function createMemento(seed: Record<string, unknown> = {}): {
@@ -51,18 +52,16 @@ function makeContext(globalSeed = {}, workspaceSeed = {}) {
 
 describe('migrateVsCodeState', () => {
   let tempHome: string;
-  let originalHome: string | undefined;
+  let savedHome: SavedHome;
 
   beforeEach(() => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-migrate-test-'));
-    originalHome = process.env.HOME;
-    process.env.HOME = tempHome;
+    savedHome = redirectHome(tempHome);
     showWarningMessage.mockReset();
   });
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.HOME;
-    else process.env.HOME = originalHome;
+    restoreHome(savedHome);
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 
@@ -172,7 +171,8 @@ describe('migrateVsCodeState', () => {
     // Simulate by replacing with a file (so mkdirSync fails on subpath).
     const blocker = path.join(tempHome, 'blocker');
     fs.writeFileSync(blocker, 'x');
-    process.env.HOME = blocker; // HOME is now a file; can't mkdir inside
+    redirectHome(blocker); // home is now a file; can't mkdir inside
+    // (afterEach restores from savedHome, which still holds the pre-test values)
 
     const { context, globalStore } = makeContext({
       'pixel-agents.soundEnabled': false,
