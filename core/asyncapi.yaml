@@ -117,6 +117,7 @@ components:
         - $ref: '#/components/schemas/WallTilesLoaded'
         # Settings & config
         - $ref: '#/components/schemas/SettingsLoaded'
+        - $ref: '#/components/schemas/OfficeProvider'
         - $ref: '#/components/schemas/ExternalAssetDirectoriesUpdated'
         - $ref: '#/components/schemas/WorkspaceFolders'
         # Diagnostics
@@ -151,6 +152,7 @@ components:
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/RefreshPlanUsage'
+        - $ref: '#/components/schemas/SetOfficeProvider'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -532,6 +534,41 @@ components:
         who may delegate. staff = owns one folder and does the work.
       enum: [vp, staff]
 
+    AuthMode:
+      type: string
+      description: |
+        How an employee's session authenticates to Claude. The mode is decided by
+        which credential is injected into the session's environment, following the
+        SDK's own precedence (ANTHROPIC_API_KEY > CLAUDE_CODE_OAUTH_TOKEN > login):
+
+        - subscription: no credential injected (both env vars removed), so the SDK
+          falls back to the local Claude Code login of whoever runs the server.
+        - oauthToken: CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`.
+        - apiKey: ANTHROPIC_API_KEY — pay-per-use, the only mode fit for someone
+          other than the server's owner.
+
+        Plan gauges only mean something for subscription/oauthToken; an apiKey
+        employee reports accumulated cost in dollars instead.
+      enum: [subscription, oauthToken, apiKey]
+
+    EmployeeProvider:
+      description: |
+        The AI an employee is plugged into. Omitted at hire time = follow the
+        office default. Secrets travel client -> server only; they are stored in the
+        home directory and never sent back to a client (see OfficeProvider).
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/AuthMode'
+        apiKey:
+          type: string
+          description: Required when mode is apiKey.
+        oauthToken:
+          type: string
+          description: Required when mode is oauthToken.
+
     EmployeeInfo:
       type: object
       additionalProperties: false
@@ -557,6 +594,19 @@ components:
             usage (uncached + cached + output). 0 until it answers.
         contextLimit:
           type: integer
+        authMode:
+          $ref: '#/components/schemas/AuthMode'
+        ownProvider:
+          type: boolean
+          description: True when this employee overrides the office default.
+        costUsd:
+          type: number
+          description: |
+            What this employee's session has cost in total, taken from the running
+            total the SDK reports on every result (measured: it reports the session
+            total, not the turn's own cost). The SDK prices subscription work too,
+            so this is only shown in apiKey mode — there it is an actual bill; on a
+            subscription it would be a number nobody is charged.
 
     AgentEventKind:
       type: string
@@ -1023,8 +1073,9 @@ components:
     HireEmployee:
       description: |
         Hire an employee: start a session in the given folder and put a matching
-        character in the office. Standalone mode only; runs on the server host
-        under the local Claude Code login. Tool calls needing approval go through
+        character in the office. Standalone mode only; the session runs on the
+        server host, authenticated by the provider given here (or the office
+        default when `provider` is omitted). Tool calls needing approval go through
         AgentPermissionRequest.
       type: object
       additionalProperties: false
@@ -1039,6 +1090,8 @@ components:
           description: The folder this employee is responsible for.
         role:
           $ref: '#/components/schemas/EmployeeRole'
+        provider:
+          $ref: '#/components/schemas/EmployeeProvider'
 
     FireEmployee:
       description: End an employee's session and remove their character.
@@ -1089,6 +1142,51 @@ components:
       properties:
         type:
           const: refreshPlanUsage
+
+    SetOfficeProvider:
+      description: |
+        Set the office-wide default AI: which credential every employee gets
+        unless they carry their own. Saved to the home directory, applied to
+        employees hired from now on (running sessions keep the credential they
+        started with). The server answers with an OfficeProvider broadcast.
+      type: object
+      additionalProperties: false
+      required: [type, mode]
+      properties:
+        type:
+          const: setOfficeProvider
+        mode:
+          $ref: '#/components/schemas/AuthMode'
+        apiKey:
+          type: string
+          description: Required when mode is apiKey. Stored in the home directory only.
+        oauthToken:
+          type: string
+          description: Required when mode is oauthToken. Stored in the home directory only.
+        model:
+          type: string
+          description: |
+            Default model for employees. Empty falls back to ~/.claude/settings.json
+            in subscription mode, and to the SDK default otherwise.
+
+    OfficeProvider:
+      description: |
+        The office default AI, as the client is allowed to see it: the mode and
+        whether a secret is on file, never the secret itself. Sent on webviewReady
+        and after every SetOfficeProvider.
+      type: object
+      additionalProperties: false
+      required: [type, mode, hasSecret]
+      properties:
+        type:
+          const: officeProvider
+        mode:
+          $ref: '#/components/schemas/AuthMode'
+        hasSecret:
+          type: boolean
+          description: A key/token is stored for this mode (its value is never sent).
+        model:
+          type: string
 
     ExportLayout:
       description: Trigger layout export via host-native save dialog.

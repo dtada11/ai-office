@@ -177,34 +177,48 @@ export function TokenGauge({
       <span className="text-xs whitespace-nowrap">
         컨텍스트 {fmt(used)} 사용 · {fmt(remaining)} 남음 ({fmt(limit)} 중)
       </span>
-      {planUsage && (
-        <div className="flex flex-col gap-4 border-t-2 border-border pt-4 mt-2">
-          <PlanBar
-            label="세션"
-            percent={planUsage.sessionPercent}
-            suffix={
-              planUsage.sessionResetsAt
-                ? `${resetLabel(planUsage.sessionResetsAt)} 리셋`
-                : undefined
-            }
-          />
-          <PlanBar label="주간 전체" percent={planUsage.weeklyAllPercent} />
-          <PlanBar label="주간 Fable" percent={planUsage.weeklyModelPercent} />
+      {/* A plan percentage is a subscription's idea. This employee is billed per
+          token, so what they have run up is the only number that means anything. */}
+      {employee?.authMode === 'apiKey' ? (
+        <div className="flex flex-col gap-2 border-t-2 border-border pt-4 mt-2">
           <div className="flex items-center justify-between gap-8">
-            {!planUsage.calibrated && (
-              <span className="text-xs text-text-muted whitespace-nowrap">미보정 추정치</span>
-            )}
-            <Button
-              variant="default"
-              size="sm"
-              onClick={refreshPlanUsage}
-              title="/usage로 실제 사용률 다시 맞추기 (토큰 소모 없음)"
-              data-testid="plan-usage-refresh"
-            >
-              {refreshing ? '⋯' : '⟳'}
-            </Button>
+            <span className="text-xs text-text-muted whitespace-nowrap">비용 (누적)</span>
+            <span className="text-xs whitespace-nowrap" data-testid="employee-cost">
+              ${(employee.costUsd ?? 0).toFixed(4)}
+            </span>
           </div>
+          <span className="text-xs text-text-muted">API 키 · 플랜 한도 없음</span>
         </div>
+      ) : (
+        planUsage && (
+          <div className="flex flex-col gap-4 border-t-2 border-border pt-4 mt-2">
+            <PlanBar
+              label="세션"
+              percent={planUsage.sessionPercent}
+              suffix={
+                planUsage.sessionResetsAt
+                  ? `${resetLabel(planUsage.sessionResetsAt)} 리셋`
+                  : undefined
+              }
+            />
+            <PlanBar label="주간 전체" percent={planUsage.weeklyAllPercent} />
+            <PlanBar label="주간 Fable" percent={planUsage.weeklyModelPercent} />
+            <div className="flex items-center justify-between gap-8">
+              {!planUsage.calibrated && (
+                <span className="text-xs text-text-muted whitespace-nowrap">미보정 추정치</span>
+              )}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={refreshPlanUsage}
+                title="/usage로 실제 사용률 다시 맞추기 (토큰 소모 없음)"
+                data-testid="plan-usage-refresh"
+              >
+                {refreshing ? '⋯' : '⟳'}
+              </Button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

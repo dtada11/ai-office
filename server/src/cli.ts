@@ -12,6 +12,7 @@ import * as path from 'path';
 
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
+import { readOfficeProvider } from './aiProvider.js';
 import {
   loadCharacterSprites,
   loadDefaultLayout,
@@ -168,6 +169,11 @@ async function main(): Promise<void> {
     void rehireSavedEmployees(store, getConfiguredModel(), runtime);
 
     // ── Plan usage gauges: scan transcripts + broadcast every minute ──
+    // A plan limit is a subscription's idea. An office running on an API key is
+    // billed per token instead, so there is no percentage to show and no local
+    // login for `/usage` to interrogate — the gauges stay off and each employee
+    // reports what they cost instead.
+    const planGaugesApply = readOfficeProvider().mode !== 'apiKey';
     const planTracker = new PlanUsageTracker();
     const tickPlanUsage = async (): Promise<void> => {
       try {
@@ -180,6 +186,7 @@ async function main(): Promise<void> {
 
     // Re-anchor the gauges on the real percentages from `/usage` (zero tokens).
     refreshPlanUsage = async (): Promise<void> => {
+      if (!planGaugesApply) return;
       if (await refreshPlanSnapshot()) planTracker.reloadSnapshot();
       await tickPlanUsage();
     };
@@ -187,9 +194,15 @@ async function main(): Promise<void> {
     // The probe is a local command (~5s, zero tokens), and the local weighted-token
     // estimate drifts fast on big-context work — measured ~4x too steep. So re-anchor
     // on the real percentages often and let the estimate only fill the gap between.
-    void refreshPlanUsage();
-    const planUsageInterval = setInterval(() => void tickPlanUsage(), 60_000);
-    const planCalibrateInterval = setInterval(() => void refreshPlanUsage(), 2 * 60_000);
+    let planUsageInterval: NodeJS.Timeout | undefined;
+    let planCalibrateInterval: NodeJS.Timeout | undefined;
+    if (planGaugesApply) {
+      void refreshPlanUsage();
+      planUsageInterval = setInterval(() => void tickPlanUsage(), 60_000);
+      planCalibrateInterval = setInterval(() => void refreshPlanUsage(), 2 * 60_000);
+    } else {
+      console.log('[Pixel Agents] Office runs on an API key: plan gauges off, cost shown instead');
+    }
 
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 

@@ -86,6 +86,7 @@ function App() {
     hooksInfoShown,
     agentTokenInfo,
     planUsage,
+    officeProvider,
     employees,
     chatLogs,
     permissions,
@@ -356,7 +357,7 @@ function App() {
         workspaceFolders={workspaceFolders}
       />
 
-      {!editor.isEditMode && <StaffPanel employees={employees} />}
+      {!editor.isEditMode && <StaffPanel employees={employees} officeProvider={officeProvider} />}
 
       {!editor.isEditMode &&
         openChats
@@ -400,6 +401,7 @@ function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        officeProvider={officeProvider}
         isDebugMode={isDebugMode}
         onToggleDebugMode={handleToggleDebugMode}
         alwaysShowOverlay={alwaysShowOverlay}

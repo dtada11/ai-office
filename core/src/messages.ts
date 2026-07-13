@@ -38,6 +38,7 @@ export type ServerMessage =
   | FloorTilesLoaded
   | WallTilesLoaded
   | SettingsLoaded
+  | OfficeProvider
   | ExternalAssetDirectoriesUpdated
   | WorkspaceFolders
   | AgentDiagnostics;
@@ -68,7 +69,8 @@ export type ClientMessage =
   | FireEmployee
   | SendAgentMessage
   | AgentPermissionDecision
-  | RefreshPlanUsage;
+  | RefreshPlanUsage
+  | SetOfficeProvider;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -233,9 +235,14 @@ export interface EmployeeInfo {
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
+  authMode?: AuthMode;
+  ownProvider?: boolean;
+  costUsd?: number;
 }
 
 export type EmployeeRole = 'vp' | 'staff';
+
+export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
 
 export interface AgentSessionEvent {
   type: 'agentEvent';
@@ -335,6 +342,13 @@ export interface SettingsLoaded {
   hooksEnabled: boolean;
   hooksInfoShown: boolean;
   externalAssetDirectories: string[];
+}
+
+export interface OfficeProvider {
+  type: 'officeProvider';
+  mode: AuthMode;
+  hasSecret: boolean;
+  model?: string;
 }
 
 export interface ExternalAssetDirectoriesUpdated {
@@ -469,6 +483,13 @@ export interface HireEmployee {
   name: string;
   cwd: string;
   role: EmployeeRole;
+  provider?: EmployeeProvider;
+}
+
+export interface EmployeeProvider {
+  mode: AuthMode;
+  apiKey?: string;
+  oauthToken?: string;
 }
 
 export interface FireEmployee {
@@ -490,4 +511,12 @@ export interface AgentPermissionDecision {
 
 export interface RefreshPlanUsage {
   type: 'refreshPlanUsage';
+}
+
+export interface SetOfficeProvider {
+  type: 'setOfficeProvider';
+  mode: AuthMode;
+  apiKey?: string;
+  oauthToken?: string;
+  model?: string;
 }

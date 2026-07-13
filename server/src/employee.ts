@@ -10,6 +10,8 @@
 
 import { z } from 'zod';
 
+import type { EmployeeProvider } from '../../core/src/messages.js';
+import { buildEnv } from './aiProvider.js';
 import { getContextLimit } from './claudeSettings.js';
 
 type Sdk = typeof import('@anthropic-ai/claude-agent-sdk', {
@@ -37,8 +39,10 @@ export type EmployeeEvent =
   | { kind: 'text'; text: string }
   /** A tool the employee is using, by name. */
   | { kind: 'tool'; text: string }
-  /** A turn finished. `text` is set only on error. */
-  | { kind: 'result'; text: string }
+  /** A turn finished. `text` is set only on error. `costUsd` is what the SESSION has
+   *  cost in total so far (not this turn) — and the SDK prices subscription work too,
+   *  so a non-zero figure here does not mean anyone was billed. */
+  | { kind: 'result'; text: string; costUsd: number }
   /** Model and context fill, read back from the reply itself. */
   | { kind: 'usage'; model: string; contextTokens: number; contextLimit: number }
   /** The session is gone (crash or stop). */
@@ -92,6 +96,9 @@ export class ClaudeEmployee implements Employee {
     readonly name: string,
     readonly cwd: string,
     private readonly host: EmployeeHost,
+    /** The AI this employee is plugged into — already resolved against the
+     *  office default, so this is exactly what the session will authenticate with. */
+    private readonly provider: EmployeeProvider,
   ) {}
 
   async start(model?: string, delegation?: Delegation): Promise<void> {
@@ -104,6 +111,8 @@ export class ClaudeEmployee implements Employee {
       options: {
         cwd: this.cwd,
         model,
+        // Replaces the environment wholesale, so buildEnv carries PATH/HOME over.
+        env: buildEnv(this.provider),
         ...(delegation ? { mcpServers: { office: officeTools(sdk, delegation) } } : {}),
         canUseTool: async (toolName, toolInput, options) => {
           // Delegating is the VP's job, not a privileged act — never ask for it.
@@ -203,10 +212,11 @@ export class ClaudeEmployee implements Employee {
     }
 
     if (type === 'result') {
-      const result = msg as { is_error?: boolean; result?: string };
+      const result = msg as { is_error?: boolean; result?: string; total_cost_usd?: number };
       this.host.onEvent({
         kind: 'result',
         text: result.is_error ? `오류: ${result.result ?? '알 수 없음'}` : '',
+        costUsd: result.total_cost_usd ?? 0,
       });
     }
   }

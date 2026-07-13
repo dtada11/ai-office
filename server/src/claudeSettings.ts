@@ -2,10 +2,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-/** Helpers for the user-level Claude Code settings file (~/.claude/settings.json).
- *  Used by the token gauge: read the configured model (context-limit heuristic)
- *  and write a new default model. Writing affects NEW sessions only — a running
- *  Claude Code session cannot be switched from outside. */
+import { readOfficeProvider, writeOfficeProvider } from './aiProvider.js';
+
+/** The model employees run on, and the context window that implies.
+ *
+ *  The office's own setting decides. Only a subscription-mode office falls back to
+ *  the host's Claude Code settings (~/.claude/settings.json) — that file describes
+ *  the machine's owner, so an employee running on someone else's key has no
+ *  business inheriting it. */
 
 const SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
 
@@ -13,7 +17,7 @@ const CONTEXT_LIMIT_DEFAULT = 200_000;
 const CONTEXT_LIMIT_1M = 1_000_000;
 const MODEL_CACHE_TTL_MS = 30_000;
 
-let cachedModel: string | undefined;
+let cachedHostModel: string | undefined;
 let cachedAt = 0;
 
 function readSettings(): Record<string, unknown> | null {
@@ -24,15 +28,24 @@ function readSettings(): Record<string, unknown> | null {
   }
 }
 
-/** Configured default model from settings.json (cached for 30 s). */
-export function getConfiguredModel(): string | undefined {
+/** The host's own default model, cached for 30 s. Subscription fallback only. */
+function getHostModel(): string | undefined {
   const now = Date.now();
   if (now - cachedAt > MODEL_CACHE_TTL_MS) {
     const settings = readSettings();
-    cachedModel = typeof settings?.model === 'string' ? settings.model : undefined;
+    cachedHostModel = typeof settings?.model === 'string' ? settings.model : undefined;
     cachedAt = now;
   }
-  return cachedModel;
+  return cachedHostModel;
+}
+
+/** The model employees are hired with: the office setting, else the host's
+ *  (subscription only), else undefined — which leaves the SDK on its default. */
+export function getConfiguredModel(): string | undefined {
+  const office = readOfficeProvider();
+  if (office.model) return office.model;
+  if (office.mode !== 'subscription') return undefined;
+  return getHostModel();
 }
 
 /** Context window for the configured model: 1M for "[1m]" variants, else 200k. */
@@ -40,20 +53,9 @@ export function getContextLimit(): number {
   return getConfiguredModel()?.includes('[1m]') ? CONTEXT_LIMIT_1M : CONTEXT_LIMIT_DEFAULT;
 }
 
-/** Write the model key into settings.json (atomic tmp+rename, preserves other keys). */
+/** Store the model as the office default. Applies to employees hired from now on;
+ *  running sessions are switched separately (setEmployeeModel), which is immediate. */
 export function setConfiguredModel(model: string): boolean {
-  const settings = readSettings();
-  if (!settings) return false;
-  settings.model = model;
-  try {
-    const tmp = `${SETTINGS_PATH}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', 'utf8');
-    fs.renameSync(tmp, SETTINGS_PATH);
-    cachedModel = model;
-    cachedAt = Date.now();
-    return true;
-  } catch (err) {
-    console.error('[Pixel Agents] Failed to write model to settings.json:', err);
-    return false;
-  }
+  writeOfficeProvider({ ...readOfficeProvider(), model });
+  return true;
 }

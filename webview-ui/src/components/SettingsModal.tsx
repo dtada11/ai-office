@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import type { OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
+import { ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
 import { Checkbox } from './ui/Checkbox.js';
 import { MenuItem } from './ui/MenuItem.js';
@@ -10,6 +12,8 @@ import { Modal } from './ui/Modal.js';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** The office's default AI; every employee without one of their own runs on it. */
+  officeProvider: OfficeProviderInfo | null;
   isDebugMode: boolean;
   onToggleDebugMode: () => void;
   alwaysShowOverlay: boolean;
@@ -33,8 +37,27 @@ export function SettingsModal({
   onToggleWatchAllSessions,
   hooksEnabled,
   onToggleHooksEnabled,
+  officeProvider,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
+  const [providerMode, setProviderMode] = useState(officeProvider?.mode ?? 'subscription');
+  const [providerSecret, setProviderSecret] = useState('');
+
+  // The server is the authority: adopt what it reports, and drop whatever was
+  // half-typed, so the panel never claims a setting that was not saved.
+  useEffect(() => {
+    if (officeProvider) setProviderMode(officeProvider.mode);
+    setProviderSecret('');
+  }, [officeProvider]);
+
+  const saveProvider = () => {
+    transport.send({
+      type: 'setOfficeProvider',
+      mode: providerMode,
+      ...(providerMode === 'apiKey' ? { apiKey: providerSecret.trim() } : {}),
+      ...(providerMode === 'oauthToken' ? { oauthToken: providerSecret.trim() } : {}),
+    });
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="설정">
@@ -110,6 +133,30 @@ export function SettingsModal({
         onChange={onToggleAlwaysShowOverlay}
       />
       <Checkbox label="디버그 보기" checked={isDebugMode} onChange={onToggleDebugMode} />
+
+      <div className="flex flex-col gap-4 border-t-2 border-border pt-6 mt-4 px-10 pb-4">
+        <span className="text-xs">사무실 기본 AI</span>
+        <span className="text-xs text-text-muted">
+          직접 연결한 직원 외에는 모두 이걸로 일합니다. 지금 일하고 있는 직원은 그대로 두고, 앞으로
+          고용하는 직원부터 적용됩니다.
+        </span>
+        <ProviderPicker
+          mode={providerMode}
+          onModeChange={(m) => setProviderMode(m === 'office' ? 'subscription' : m)}
+          secret={providerSecret}
+          onSecretChange={setProviderSecret}
+          includeOffice={false}
+          hasSecret={officeProvider?.mode === providerMode && officeProvider.hasSecret}
+        />
+        <Button
+          variant="default"
+          size="sm"
+          onClick={saveProvider}
+          data-testid="save-office-provider"
+        >
+          저장
+        </Button>
+      </div>
     </Modal>
   );
 }

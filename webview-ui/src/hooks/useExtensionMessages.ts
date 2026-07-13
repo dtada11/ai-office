@@ -74,6 +74,8 @@ interface ExtensionMessageState {
   hooksInfoShown: boolean;
   agentTokenInfo: Record<number, AgentTokenInfo>;
   planUsage: PlanUsageInfo | null;
+  /** Which AI the office runs on by default; null until the server says. */
+  officeProvider: OfficeProviderInfo | null;
   /** Everyone working in the office; agentId doubles as their character's id. */
   employees: EmployeeInfo[];
   /** Transcript per employee. */
@@ -84,6 +86,8 @@ interface ExtensionMessageState {
   clearPermission: (agentId: number) => void;
 }
 
+export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
+
 export interface EmployeeInfo {
   agentId: number;
   name: string;
@@ -92,6 +96,19 @@ export interface EmployeeInfo {
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
+  /** How this employee's session authenticates. */
+  authMode?: AuthMode;
+  /** They brought their own AI instead of following the office default. */
+  ownProvider?: boolean;
+  /** What they have cost so far; only shown in apiKey mode. */
+  costUsd?: number;
+}
+
+/** The office default AI, as the client is allowed to see it — never the secret. */
+export interface OfficeProviderInfo {
+  mode: AuthMode;
+  hasSecret: boolean;
+  model?: string;
 }
 
 export interface ChatEntry {
@@ -160,6 +177,7 @@ export function useExtensionMessages(
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
   const [agentTokenInfo, setAgentTokenInfo] = useState<Record<number, AgentTokenInfo>>({});
   const [planUsage, setPlanUsage] = useState<PlanUsageInfo | null>(null);
+  const [officeProvider, setOfficeProvider] = useState<OfficeProviderInfo | null>(null);
   const [employees, setEmployees] = useState<EmployeeInfo[]>([]);
   const [chatLogs, setChatLogs] = useState<Record<number, ChatEntry[]>>({});
   const [permissions, setPermissions] = useState<Record<number, PermissionRequest | undefined>>({});
@@ -633,6 +651,12 @@ export function useExtensionMessages(
           weeklyResetsAt: msg.weeklyResetsAt as string | undefined,
           calibrated: msg.calibrated as boolean,
         });
+      } else if (msg.type === 'officeProvider') {
+        setOfficeProvider({
+          mode: msg.mode as AuthMode,
+          hasSecret: msg.hasSecret as boolean,
+          model: msg.model as string | undefined,
+        });
       } else if (msg.type === 'employeeState') {
         setEmployees((msg.employees as EmployeeInfo[]) ?? []);
       } else if (msg.type === 'agentEvent') {
@@ -699,5 +723,6 @@ export function useExtensionMessages(
     hooksInfoShown,
     agentTokenInfo,
     planUsage,
+    officeProvider,
   };
 }

@@ -12,9 +12,10 @@
  * through askPermission, which asks the webview and waits.
  */
 
-import type { EmployeeRole } from '../../core/src/messages.js';
+import type { EmployeeProvider, EmployeeRole } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { resolveProvider } from './aiProvider.js';
 import { ClaudeEmployee, type Delegation, type Employee, type EmployeeEvent } from './employee.js';
 import { readEmployees, writeEmployees } from './employeePersistence.js';
 import type { AgentState } from './types.js';
@@ -33,6 +34,15 @@ interface Staff {
   model: string;
   contextTokens: number;
   contextLimit: number;
+  /** Their own AI, if they overrode the office default. Kept as given (secret and
+   *  all) because it has to be written back to the roster to survive a restart. */
+  ownProvider?: EmployeeProvider;
+  /** The provider actually in force — own, or the office default at hire time. */
+  provider: EmployeeProvider;
+  /** What this session has cost so far, as the SDK reckons it. Note it is NOT zero
+   *  on a subscription — the SDK still prices the work — so it is only shown for an
+   *  employee on a key, where it is an actual bill rather than a notional one. */
+  costUsd: number;
   /** Set while the VP is waiting on this employee: collect their answer, then resolve. */
   delegation?: { answer: string; resolve: (answer: string) => void };
 }
@@ -80,6 +90,9 @@ function broadcastStaff(store: AgentStateStore): void {
       model: s.model,
       contextTokens: s.contextTokens,
       contextLimit: s.contextLimit,
+      authMode: s.provider.mode,
+      ownProvider: s.ownProvider !== undefined,
+      costUsd: s.costUsd,
     })),
   });
 }
@@ -114,6 +127,14 @@ function onEvent(
 
     case 'result': {
       store.broadcast({ type: 'agentEvent', agentId, kind: 'result', text: event.text });
+      // Measured: the SDK reports the session's RUNNING TOTAL on every result, not
+      // what the turn alone cost (turn 1: $0.4373, turn 2 of the same session:
+      // $0.4595 — a one-word turn cannot cost another $0.46). So take it, never
+      // add it, or every turn re-bills the whole session.
+      if (event.costUsd > 0 && event.costUsd !== current.costUsd) {
+        current.costUsd = event.costUsd;
+        broadcastStaff(store);
+      }
       const waiting = current.delegation;
       if (waiting) {
         current.delegation = undefined;
@@ -221,6 +242,8 @@ export async function hireEmployee(
   role: EmployeeRole,
   model?: string,
   runtime?: AgentRuntime,
+  /** The AI they bring themselves; omitted = whatever the office runs on. */
+  ownProvider?: EmployeeProvider,
 ): Promise<void> {
   if (!name.trim() || !cwd.trim()) return;
 
@@ -229,10 +252,19 @@ export async function hireEmployee(
   const agentId = store.nextAgentId.current++;
   store.set(agentId, newCharacter(agentId, cwd));
 
-  const employee = new ClaudeEmployee(name, cwd, {
-    onEvent: (event) => onEvent(store, runtime, agentId, event),
-    askPermission: (ask) => askPermission(store, agentId, ask),
-  });
+  // Resolved once, at hire time: the session keeps the credential it started with,
+  // so changing the office default later cannot swap out a running employee's AI.
+  const provider = resolveProvider(ownProvider);
+
+  const employee = new ClaudeEmployee(
+    name,
+    cwd,
+    {
+      onEvent: (event) => onEvent(store, runtime, agentId, event),
+      askPermission: (ask) => askPermission(store, agentId, ask),
+    },
+    provider,
+  );
 
   staff.set(agentId, {
     employee,
@@ -242,11 +274,16 @@ export async function hireEmployee(
     model: '',
     contextTokens: 0,
     contextLimit: 0,
+    ownProvider,
+    provider,
+    costUsd: 0,
   });
   await employee.start(model, role === 'vp' ? delegationFor(store) : undefined);
   broadcastStaff(store);
   saveStaff();
-  console.log(`[Pixel Agents] Hired "${name}" (${role}, agent ${agentId}) in ${cwd}`);
+  console.log(
+    `[Pixel Agents] Hired "${name}" (${role}, agent ${agentId}, ${provider.mode}) in ${cwd}`,
+  );
 }
 
 export function fireEmployee(store: AgentStateStore, agentId: number): void {
@@ -295,7 +332,14 @@ export function sendStaffTo(store: AgentStateStore): void {
 }
 
 function saveStaff(): void {
-  writeEmployees([...staff.values()].map((s) => ({ name: s.name, cwd: s.cwd, role: s.role })));
+  writeEmployees(
+    [...staff.values()].map((s) => ({
+      name: s.name,
+      cwd: s.cwd,
+      role: s.role,
+      ...(s.ownProvider ? { provider: s.ownProvider } : {}),
+    })),
+  );
 }
 
 /** Re-hire everyone from the roster when the office opens. */
@@ -305,7 +349,15 @@ export async function rehireSavedEmployees(
   runtime?: AgentRuntime,
 ): Promise<void> {
   for (const saved of readEmployees()) {
-    await hireEmployee(store, saved.name, saved.cwd, saved.role ?? 'staff', model, runtime);
+    await hireEmployee(
+      store,
+      saved.name,
+      saved.cwd,
+      saved.role ?? 'staff',
+      model,
+      runtime,
+      saved.provider,
+    );
   }
 }
 
