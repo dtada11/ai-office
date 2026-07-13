@@ -735,14 +735,12 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click — waiting only, quick fade. A permission bubble is not
+   *  dismissable: it is the approval inbox, and only the approval takes it down. */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id);
     if (!ch || !ch.bubbleType) return;
-    if (ch.bubbleType === 'permission') {
-      ch.bubbleType = null;
-      ch.bubbleTimer = 0;
-    } else if (ch.bubbleType === 'waiting') {
+    if (ch.bubbleType === 'waiting') {
       // Trigger immediate fade (0.3s remaining)
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC);
     }

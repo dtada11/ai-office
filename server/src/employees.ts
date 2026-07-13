@@ -16,7 +16,13 @@ import type { EmployeeProvider, EmployeeRole } from '../../core/src/messages.js'
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { resolveProvider } from './aiProvider.js';
-import { ClaudeEmployee, type Delegation, type Employee, type EmployeeEvent } from './employee.js';
+import {
+  ClaudeEmployee,
+  type Delegation,
+  type Employee,
+  type EmployeeEvent,
+  type PermissionAsk,
+} from './employee.js';
 import { readEmployees, writeEmployees } from './employeePersistence.js';
 import type { AgentState } from './types.js';
 
@@ -47,8 +53,17 @@ interface Staff {
   delegation?: { answer: string; resolve: (answer: string) => void };
 }
 
+/** A request the user has not answered yet. The ask is kept whole so it can be
+ *  re-sent to a client that connects while the request is still up. */
+interface PendingPermission {
+  agentId: number;
+  ask: PermissionAsk;
+  /** Answers the employee's parked tool call. Safe to call more than once. */
+  resolve: (allow: boolean) => void;
+}
+
 const staff = new Map<number, Staff>();
-const pendingPermissions = new Map<string, (allow: boolean) => void>();
+const pendingPermissions = new Map<string, PendingPermission>();
 
 /** A character for an employee we started ourselves. `isExternal: false` keeps the
  *  stale-check (which only despawns external agents) from removing it. */
@@ -177,18 +192,22 @@ function onEvent(
 function askPermission(
   store: AgentStateStore,
   agentId: number,
-  ask: { requestId: string; toolName: string; title: string; input: string },
+  ask: PermissionAsk,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      pendingPermissions.delete(ask.requestId);
-      resolve(false);
-    }, PERMISSION_TIMEOUT_MS);
-
-    pendingPermissions.set(ask.requestId, (allow) => {
+    // Whichever path answers first — the user's decision, the timeout, or dispose —
+    // goes through here, so the request leaves the board and every client is told
+    // the bubble is done exactly once. The Map delete is what makes it once.
+    const settle = (allow: boolean): void => {
+      if (!pendingPermissions.delete(ask.requestId)) return;
       clearTimeout(timer);
+      store.broadcast({ type: 'agentPermissionResolved', agentId, requestId: ask.requestId });
       resolve(allow);
-    });
+    };
+
+    const timer = setTimeout(() => settle(false), PERMISSION_TIMEOUT_MS);
+
+    pendingPermissions.set(ask.requestId, { agentId, ask, resolve: settle });
 
     store.broadcast({ type: 'agentPermissionRequest', agentId, ...ask });
   });
@@ -314,10 +333,15 @@ export function sendToEmployee(store: AgentStateStore, agentId: number, text: st
 }
 
 export function resolveEmployeePermission(requestId: string, allow: boolean): void {
-  const resolve = pendingPermissions.get(requestId);
-  if (!resolve) return;
-  pendingPermissions.delete(requestId);
-  resolve(allow);
+  const pending = pendingPermissions.get(requestId);
+  if (!pending) return;
+  pending.resolve(allow);
+}
+
+/** Every request still waiting on the user — what a client that just connected has
+ *  to be told about, or it would show an office with nobody asking for anything. */
+export function getPendingPermissionRequests(): Array<{ agentId: number; ask: PermissionAsk }> {
+  return [...pendingPermissions.values()].map(({ agentId, ask }) => ({ agentId, ask }));
 }
 
 /** Switch one employee's model, mid-session. The UI confirms the switch once a
@@ -390,6 +414,6 @@ export async function rehireSavedEmployees(
 export function disposeEmployees(): void {
   for (const [, current] of staff) current.employee.stop();
   staff.clear();
-  for (const [, resolve] of pendingPermissions) resolve(false);
+  for (const [, pending] of pendingPermissions) pending.resolve(false);
   pendingPermissions.clear();
 }

@@ -107,6 +107,7 @@ components:
         - $ref: '#/components/schemas/EmployeeState'
         - $ref: '#/components/schemas/AgentSessionEvent'
         - $ref: '#/components/schemas/AgentPermissionRequest'
+        - $ref: '#/components/schemas/AgentPermissionResolved'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -652,6 +653,21 @@ components:
         input:
           type: string
           description: Truncated JSON of the tool input, for display.
+
+    AgentPermissionResolved:
+      description: |
+        A pending AgentPermissionRequest is no longer pending — decided, timed
+        out, or dropped on dispose. Clients clear the card and the bubble.
+      type: object
+      additionalProperties: false
+      required: [type, agentId, requestId]
+      properties:
+        type:
+          const: agentPermissionResolved
+        agentId:
+          type: integer
+        requestId:
+          type: string
 
     LayoutLoaded:
       description: |

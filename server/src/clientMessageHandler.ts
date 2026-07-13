@@ -7,6 +7,7 @@ import { getConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import {
   fireEmployee,
+  getPendingPermissionRequests,
   hireEmployee,
   resolveEmployeePermission,
   sendStaffTo,
@@ -70,6 +71,11 @@ export function handleClientMessage(
     case 'webviewReady':
       handleWebviewReady(send, ctx);
       sendStaffTo(store); // a fresh client needs to know who works here
+      // ...and who is still waiting on an answer. Sent to this client only — a
+      // broadcast would re-alert (and re-chime on) everyone already connected.
+      for (const { agentId, ask } of getPendingPermissionRequests()) {
+        send({ type: 'agentPermissionRequest', agentId, ...ask });
+      }
       break;
 
     case 'saveLayout':

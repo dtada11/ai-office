@@ -1,24 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
-import type { EmployeeEvent } from '../src/employee.js';
+import type { EmployeeEvent, PermissionAsk } from '../src/employee.js';
 import type { SavedEmployee } from '../src/employeePersistence.js';
 import { readEmployees, writeEmployees } from '../src/employeePersistence.js';
 import {
   disposeEmployees,
+  getPendingPermissionRequests,
   hireEmployee,
   rehireSavedEmployees,
+  resolveEmployeePermission,
   setEmployeeModelFor,
 } from '../src/employees.js';
 
 /** The employee the registry actually hired, with the session stubbed out: no SDK,
- *  no process. `emit` is how a test plays the session talking back. */
+ *  no process. `emit` is how a test plays the session talking back, and `ask` is how
+ *  it plays a tool call that needs the user's approval. */
 interface FakeEmployee {
   startedWith: string | undefined;
   setModel: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   emit(event: EmployeeEvent): void;
+  ask(ask: PermissionAsk): Promise<boolean>;
 }
 
 vi.mock('../src/employee.js', () => {
@@ -30,9 +34,18 @@ vi.mock('../src/employee.js', () => {
     send = vi.fn();
     stop = vi.fn();
     private readonly onEvent: (event: EmployeeEvent) => void;
+    private readonly askPermission: (ask: PermissionAsk) => Promise<boolean>;
 
-    constructor(_name: string, _cwd: string, host: { onEvent: (event: EmployeeEvent) => void }) {
+    constructor(
+      _name: string,
+      _cwd: string,
+      host: {
+        onEvent: (event: EmployeeEvent) => void;
+        askPermission: (ask: PermissionAsk) => Promise<boolean>;
+      },
+    ) {
       this.onEvent = host.onEvent;
+      this.askPermission = host.askPermission;
       created.push(this as unknown as FakeEmployee);
     }
 
@@ -42,6 +55,10 @@ vi.mock('../src/employee.js', () => {
 
     emit(event: EmployeeEvent): void {
       this.onEvent(event);
+    }
+
+    ask(ask: PermissionAsk): Promise<boolean> {
+      return this.askPermission(ask);
     }
   }
 
@@ -137,6 +154,71 @@ describe('employees', () => {
           text: '모델 변경 실패: 세션이 응답하지 않음',
         });
       });
+    });
+  });
+
+  describe('permissions', () => {
+    const ASK: PermissionAsk = {
+      requestId: 'req-1',
+      toolName: 'Write',
+      title: '파일을 쓰려고 합니다',
+      input: '{"file_path":"/tmp/x"}',
+    };
+
+    it('asks the office when a tool call needs approval', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      void created[0].ask(ASK);
+
+      expect(broadcasts).toContainEqual({ type: 'agentPermissionRequest', agentId: 1, ...ASK });
+      expect(getPendingPermissionRequests()).toEqual([{ agentId: 1, ask: ASK }]);
+    });
+
+    it('tells every client the request is answered, and drops it', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const allowed = created[0].ask(ASK);
+
+      resolveEmployeePermission(ASK.requestId, true);
+
+      await expect(allowed).resolves.toBe(true);
+      expect(broadcasts).toContainEqual({
+        type: 'agentPermissionResolved',
+        agentId: 1,
+        requestId: ASK.requestId,
+      });
+      expect(getPendingPermissionRequests()).toEqual([]);
+    });
+
+    it('tells every client when the request times out unanswered', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      vi.useFakeTimers();
+      try {
+        const allowed = created[0].ask(ASK);
+
+        vi.advanceTimersByTime(30 * 60 * 1000);
+
+        await expect(allowed).resolves.toBe(false);
+        expect(broadcasts).toContainEqual({
+          type: 'agentPermissionResolved',
+          agentId: 1,
+          requestId: ASK.requestId,
+        });
+        expect(getPendingPermissionRequests()).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('leaves the requests nobody has answered yet on the board', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      await hireEmployee(store, '검증', '/work', 'staff', SONNET);
+      const second: PermissionAsk = { ...ASK, requestId: 'req-2' };
+      void created[0].ask(ASK);
+      void created[1].ask(second);
+
+      resolveEmployeePermission(ASK.requestId, false);
+
+      expect(getPendingPermissionRequests()).toEqual([{ agentId: 2, ask: second }]);
     });
   });
 

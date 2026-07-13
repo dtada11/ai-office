@@ -31,6 +31,7 @@ export type ServerMessage =
   | EmployeeState
   | AgentSessionEvent
   | AgentPermissionRequest
+  | AgentPermissionResolved
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -260,6 +261,12 @@ export interface AgentPermissionRequest {
   toolName: string;
   title: string;
   input: string;
+}
+
+export interface AgentPermissionResolved {
+  type: 'agentPermissionResolved';
+  agentId: number;
+  requestId: string;
 }
 
 export interface LayoutLoaded {

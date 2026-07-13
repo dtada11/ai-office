@@ -685,6 +685,19 @@ export function useExtensionMessages(
             input: msg.input as string,
           },
         }));
+        // The bubble is the inbox: with every chat window closed, it is the only
+        // thing that says who is waiting on the user.
+        os.showPermissionBubble(agentId);
+        playPermissionSound();
+      } else if (msg.type === 'agentPermissionResolved') {
+        const agentId = msg.agentId as number;
+        const requestId = msg.requestId as string;
+        // Only the request we are actually showing — a late resolve for an old one
+        // must not wipe the card for the request that replaced it.
+        setPermissions((prev) =>
+          prev[agentId]?.requestId === requestId ? { ...prev, [agentId]: undefined } : prev,
+        );
+        os.clearPermissionBubble(agentId);
       }
     };
     const unsubscribe = transport.onMessage(handler);
