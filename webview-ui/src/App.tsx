@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import type { ChatPosition } from './components/chatWindowPosition.js';
+import { bringToFront, initialChatPosition } from './components/chatWindowPosition.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { EmployeeChat } from './components/EmployeeChat.js';
@@ -93,8 +95,20 @@ function App() {
     clearPermission,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
-  /** Chat windows the user has open, in the order they opened them. */
+  /** Chat windows the user has open. Render order IS stacking order, so the last
+   *  entry is the front-most window. */
   const [openChats, setOpenChats] = useState<number[]>([]);
+  /** Where each window sits, by agentId. Kept when a window is closed, so re-opening
+   *  it puts it back where the user left it. Not written to disk. */
+  const [chatPositions, setChatPositions] = useState<Record<number, ChatPosition>>({});
+
+  const handleChatMove = useCallback((agentId: number, position: ChatPosition) => {
+    setChatPositions((prev) => ({ ...prev, [agentId]: position }));
+  }, []);
+
+  const handleChatFocus = useCallback((agentId: number) => {
+    setOpenChats((prev) => bringToFront(prev, agentId));
+  }, []);
 
   // Show migration notice once layout reset is detected
   const [migrationNoticeDismissed, setMigrationNoticeDismissed] = useState(false);
@@ -102,6 +116,7 @@ function App() {
 
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStaffOpen, setIsStaffOpen] = useState(false);
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
@@ -162,7 +177,15 @@ function App() {
     const meta = os.subagentMeta.get(agentId);
     const focusId = meta ? meta.parentAgentId : agentId;
     transport.send({ type: 'focusAgent', id: focusId });
-    setOpenChats((prev) => (prev.includes(focusId) ? prev : [...prev, focusId]));
+    setOpenChats((prev) =>
+      prev.includes(focusId) ? bringToFront(prev, focusId) : [...prev, focusId],
+    );
+    // The stagger is pinned the moment a window opens. Deriving it from render
+    // order instead would make the window jump the first time another one comes
+    // to the front.
+    setChatPositions((prev) =>
+      prev[focusId] ? prev : { ...prev, [focusId]: initialChatPosition(Object.keys(prev).length) },
+    );
   }, []);
 
   const officeState = getOfficeState();
@@ -352,24 +375,35 @@ function App() {
         isEditMode={editor.isEditMode}
         onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
+        isStaffOpen={isStaffOpen}
+        onToggleStaff={() => setIsStaffOpen((v) => !v)}
         isSettingsOpen={isSettingsOpen}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         workspaceFolders={workspaceFolders}
       />
 
-      {!editor.isEditMode && <StaffPanel employees={employees} officeProvider={officeProvider} />}
+      {!editor.isEditMode && (
+        <StaffPanel
+          employees={employees}
+          officeProvider={officeProvider}
+          isOpen={isStaffOpen}
+          onClose={() => setIsStaffOpen(false)}
+        />
+      )}
 
       {!editor.isEditMode &&
         openChats
           .map((agentId) => employees.find((e) => e.agentId === agentId))
           .filter((e): e is (typeof employees)[number] => e !== undefined)
-          .map((employee, index) => (
+          .map((employee) => (
             <EmployeeChat
               key={employee.agentId}
               employee={employee}
               log={chatLogs[employee.agentId] ?? []}
               permission={permissions[employee.agentId]}
-              index={index}
+              position={chatPositions[employee.agentId] ?? initialChatPosition(0)}
+              onMove={(position) => handleChatMove(employee.agentId, position)}
+              onFocus={() => handleChatFocus(employee.agentId)}
               onClose={() => setOpenChats((prev) => prev.filter((id) => id !== employee.agentId))}
               onDecided={() => clearPermission(employee.agentId)}
             />

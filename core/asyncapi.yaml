@@ -138,7 +138,6 @@ components:
         - $ref: '#/components/schemas/SetHooksEnabled'
         - $ref: '#/components/schemas/SetHooksInfoShown'
         - $ref: '#/components/schemas/SetWatchAllSessions'
-        - $ref: '#/components/schemas/SetClaudeModel'
         - $ref: '#/components/schemas/ExportLayout'
         - $ref: '#/components/schemas/ImportLayout'
         - $ref: '#/components/schemas/OpenSessionsFolder'
@@ -150,6 +149,7 @@ components:
         - $ref: '#/components/schemas/HireEmployee'
         - $ref: '#/components/schemas/FireEmployee'
         - $ref: '#/components/schemas/SendAgentMessage'
+        - $ref: '#/components/schemas/SetAgentModel'
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/RefreshPlanUsage'
         - $ref: '#/components/schemas/SetOfficeProvider'
@@ -610,12 +610,13 @@ components:
 
     AgentEventKind:
       type: string
-      enum: [user, text, tool, result]
+      enum: [user, text, tool, result, system]
 
     AgentSessionEvent:
       description: |
         One piece of an employee's transcript: the user's own message echoed
-        back, assistant text, a tool name, or a turn result.
+        back, assistant text, a tool name, a turn result, or the office itself
+        speaking (`system` — e.g. confirming a model switch).
       type: object
       additionalProperties: false
       required: [type, agentId, kind, text]
@@ -977,20 +978,6 @@ components:
         enabled:
           type: boolean
 
-    SetClaudeModel:
-      description: |
-        Write the given model id into ~/.claude/settings.json ("model" key).
-        Applies to NEW Claude Code sessions only — a running session cannot be
-        switched from outside.
-      type: object
-      additionalProperties: false
-      required: [type, model]
-      properties:
-        type:
-          const: setClaudeModel
-        model:
-          type: string
-
     SetLastSeenVersion:
       type: object
       additionalProperties: false
@@ -1115,6 +1102,22 @@ components:
         agentId:
           type: integer
         text:
+          type: string
+
+    SetAgentModel:
+      description: |
+        Switch one employee's model, mid-session. Unlike SetClaudeModel (which
+        only writes the default for new sessions), this reaches the running
+        session — so each employee can be on the model their work is worth.
+      type: object
+      additionalProperties: false
+      required: [type, agentId, model]
+      properties:
+        type:
+          const: setAgentModel
+        agentId:
+          type: integer
+        model:
           type: string
 
     AgentPermissionDecision:

@@ -1,25 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExtensionMessages.js';
+import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
+import type { ChatPosition } from './chatWindowPosition.js';
+import { clampChatPosition } from './chatWindowPosition.js';
 import { Button } from './ui/Button.js';
 
 /** One employee's chat window — the window IS their session. Several can be open
- *  at once, which is how the user works through approvals from parallel workers. */
+ *  at once, which is how the user works through approvals from parallel workers.
+ *  Dragged by the header, and switched to its own model there: a cheap job need
+ *  not be done on an expensive model just because the office default is. */
 
 const KIND_CLASS: Record<ChatEntry['kind'], string> = {
   user: 'text-accent-bright',
   text: 'text-text',
   tool: 'text-text-muted',
   result: 'text-red-400',
+  system: 'text-text-muted',
 };
 
 interface EmployeeChatProps {
   employee: EmployeeInfo;
   log: ChatEntry[];
   permission?: PermissionRequest;
-  /** Window index — windows are staggered so several stay readable at once. */
-  index: number;
+  /** Where the window sits. Owned by App, so it survives closing and re-opening. */
+  position: ChatPosition;
+  onMove: (position: ChatPosition) => void;
+  /** Bring this window to the front — it is the one being worked in. */
+  onFocus: () => void;
   onClose: () => void;
   onDecided: () => void;
 }
@@ -28,11 +37,19 @@ export function EmployeeChat({
   employee,
   log,
   permission,
-  index,
+  position,
+  onMove,
+  onFocus,
   onClose,
   onDecided,
 }: EmployeeChatProps) {
   const [input, setInput] = useState('');
+  const [isModelOpen, setIsModelOpen] = useState(false);
+  /** The model just picked, shown at once so the click has an answer. The session
+   *  only reports what it actually ran on at the next reply — and that wins. */
+  const [picked, setPicked] = useState('');
+  /** Grab offset while dragging: pointer minus window origin. Null = not dragging. */
+  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,11 +57,52 @@ export function EmployeeChat({
     if (el) el.scrollTop = el.scrollHeight;
   }, [log, permission]);
 
+  // The reply reported a model: drop the optimistic label, whether or not it
+  // agrees with the pick. What the session ran on is the only truth here.
+  useEffect(() => {
+    setPicked('');
+  }, [employee.model]);
+
+  // Listeners on the window, not on the header: bringing the window to the front
+  // re-orders it in the DOM, which would drop a pointer capture held by the header.
+  useEffect(() => {
+    if (!drag) return;
+    const move = (e: PointerEvent) => {
+      onMove(
+        clampChatPosition(
+          { x: e.clientX - drag.dx, y: e.clientY - drag.dy },
+          { width: window.innerWidth, height: window.innerHeight },
+        ),
+      );
+    };
+    const end = () => setDrag(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  }, [drag, onMove]);
+
+  const startDrag = (e: React.PointerEvent) => {
+    // Buttons in the header (✕, the model dropdown) are controls, not a handle.
+    if ((e.target as HTMLElement).closest('button')) return;
+    setDrag({ dx: e.clientX - position.x, dy: e.clientY - position.y });
+  };
+
   const send = () => {
     const text = input.trim();
     if (!text) return;
     transport.send({ type: 'sendAgentMessage', agentId: employee.agentId, text });
     setInput('');
+  };
+
+  const selectModel = (model: string) => {
+    transport.send({ type: 'setAgentModel', agentId: employee.agentId, model });
+    setPicked(model);
+    setIsModelOpen(false);
   };
 
   const decide = (allow: boolean) => {
@@ -59,18 +117,47 @@ export function EmployeeChat({
 
   return (
     <div
-      className="absolute top-10 z-20 pixel-panel p-8 flex flex-col gap-6 w-420 max-w-[45vw] h-[70vh]"
-      style={{ left: 40 + index * 40 }}
+      className="absolute z-20 pixel-panel p-8 flex flex-col gap-6 w-420 max-w-[45vw] h-[70vh]"
+      style={{ left: position.x, top: position.y }}
+      onPointerDown={onFocus}
       data-testid={`employee-chat-${employee.agentId}`}
     >
-      <div className="flex items-center justify-between gap-8">
+      <div
+        className="relative flex items-center justify-between gap-8 cursor-move"
+        onPointerDown={startDrag}
+        data-testid="chat-header"
+      >
         <span className="text-sm whitespace-nowrap">{employee.name}</span>
         <div className="flex items-center gap-4">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setIsModelOpen((v) => !v)}
+            title="이 직원의 모델 바꾸기"
+            data-testid="chat-model-select"
+          >
+            {displayModel(picked || employee.model)} ▾
+          </Button>
           <span className="text-xs text-text-muted whitespace-nowrap">{employee.cwd}</span>
           <Button variant="default" size="sm" onClick={onClose} title="창 닫기">
             ✕
           </Button>
         </div>
+        {isModelOpen && (
+          <div className="absolute top-full right-0 pt-4 z-30">
+            <div className="bg-bg border-2 border-border rounded-none shadow-pixel p-4">
+              {MODEL_OPTIONS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => selectModel(m.id)}
+                  className="block w-full text-left py-2 px-12 bg-transparent border-none rounded-none cursor-pointer whitespace-nowrap hover:bg-btn-bg"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div
@@ -89,7 +176,9 @@ export function EmployeeChat({
                 ? `\n> ${e.text}\n`
                 : e.kind === 'tool'
                   ? `\n[도구: ${e.text}]\n`
-                  : e.text}
+                  : e.kind === 'system'
+                    ? `\n[사무실: ${e.text}]\n`
+                    : e.text}
             </span>
           ))
         )}

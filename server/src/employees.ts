@@ -143,12 +143,18 @@ function onEvent(
       break;
     }
 
-    case 'usage':
+    case 'usage': {
+      // The reply is where a model switch is confirmed, so it is also the moment
+      // the roster learns of it. Only on a change — usage lands every turn and the
+      // roster is a file write.
+      const switched = current.model !== event.model;
       current.model = event.model;
       current.contextTokens = event.contextTokens;
       current.contextLimit = event.contextLimit;
       broadcastStaff(store);
+      if (switched) saveStaff();
       break;
+    }
 
     case 'ended':
       if (event.text) {
@@ -271,7 +277,10 @@ export async function hireEmployee(
     name,
     cwd,
     role,
-    model: '',
+    // Seeded with what we started them on, so a re-hired employee keeps their
+    // model in the roster even if they never take a turn. The next reply's usage
+    // event is what confirms it.
+    model: model ?? '',
     contextTokens: 0,
     contextLimit: 0,
     ownProvider,
@@ -311,11 +320,25 @@ export function resolveEmployeePermission(requestId: string, allow: boolean): vo
   resolve(allow);
 }
 
-/** Switch the model of every employee. The UI confirms the switch once a reply
- *  comes back carrying the new model. */
-export function setEmployeeModel(store: AgentStateStore, model: string): void {
-  for (const [agentId, current] of staff) {
-    void current.employee.setModel(model).catch((err) => {
+/** Switch one employee's model, mid-session. The UI confirms the switch once a
+ *  reply comes back carrying the new model. Per-employee on purpose: the office
+ *  default must never reach in and re-model everyone who is already working. */
+export function setEmployeeModelFor(store: AgentStateStore, agentId: number, model: string): void {
+  const current = staff.get(agentId);
+  if (!current) return;
+  void current.employee
+    .setModel(model)
+    // Said out loud in their chat: the switch lands silently otherwise, and the
+    // header label cannot confirm it until the next reply reports what it ran on.
+    .then(() => {
+      store.broadcast({
+        type: 'agentEvent',
+        agentId,
+        kind: 'system',
+        text: `모델을 ${model}로 바꿨습니다. 다음 지시부터 적용됩니다.`,
+      });
+    })
+    .catch((err) => {
       store.broadcast({
         type: 'agentEvent',
         agentId,
@@ -323,7 +346,6 @@ export function setEmployeeModel(store: AgentStateStore, model: string): void {
         text: `모델 변경 실패: ${err instanceof Error ? err.message : String(err)}`,
       });
     });
-  }
 }
 
 /** Send the current staff to a client that just connected. */
@@ -337,6 +359,7 @@ function saveStaff(): void {
       name: s.name,
       cwd: s.cwd,
       role: s.role,
+      ...(s.model ? { model: s.model } : {}),
       ...(s.ownProvider ? { provider: s.ownProvider } : {}),
     })),
   );
@@ -354,7 +377,9 @@ export async function rehireSavedEmployees(
       saved.name,
       saved.cwd,
       saved.role ?? 'staff',
-      model,
+      // Their own model outranks the office default: an employee put on Haiku
+      // stays on Haiku across a restart.
+      saved.model ?? model,
       runtime,
       saved.provider,
     );

@@ -3,7 +3,7 @@ import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { maskProvider, readOfficeProvider, writeOfficeProvider } from './aiProvider.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
-import { getConfiguredModel, setConfiguredModel } from './claudeSettings.js';
+import { getConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import {
   fireEmployee,
@@ -11,7 +11,7 @@ import {
   resolveEmployeePermission,
   sendStaffTo,
   sendToEmployee,
-  setEmployeeModel,
+  setEmployeeModelFor,
 } from './employees.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
@@ -117,20 +117,9 @@ export function handleClientMessage(
       adapter?.setSetting(KEY_HOOKS_INFO_SHOWN, true);
       break;
 
-    case 'setClaudeModel': {
-      const model = msg.model as string | undefined;
-      if (model) {
-        const ok = setConfiguredModel(model);
-        // Also switch the running chat-panel session, which applies immediately.
-        setEmployeeModel(store, model);
-        console.log(
-          ok
-            ? `[Pixel Agents] Claude model set to ${model} (applies to new sessions)`
-            : `[Pixel Agents] Failed to set Claude model to ${model}`,
-        );
-      }
+    case 'setAgentModel':
+      setEmployeeModelFor(store, msg.agentId as number, msg.model as string);
       break;
-    }
 
     case 'addExternalAssetDirectory': {
       const newPath = msg.path as string | undefined;

@@ -12,6 +12,9 @@ import { Button } from './ui/Button.js';
 interface StaffPanelProps {
   employees: EmployeeInfo[];
   officeProvider: OfficeProviderInfo | null;
+  /** Opened from the bottom toolbar, next to 꾸미기 and 설정. */
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 /** What an employee's row says they run on. */
@@ -21,8 +24,7 @@ const MODE_LABEL: Record<string, string> = {
   apiKey: 'API 키',
 };
 
-export function StaffPanel({ employees, officeProvider }: StaffPanelProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export function StaffPanel({ employees, officeProvider, isOpen, onClose }: StaffPanelProps) {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [isVp, setIsVp] = useState(false);
@@ -61,21 +63,13 @@ export function StaffPanel({ employees, officeProvider }: StaffPanelProps) {
     setSecret('');
   };
 
-  if (!isOpen) {
-    return (
-      <div className="absolute bottom-60 left-10 z-30">
-        <Button variant="default" onClick={() => setIsOpen(true)} title="직원 고용·해임">
-          직원 관리
-        </Button>
-      </div>
-    );
-  }
+  if (!isOpen) return null;
 
   return (
     <div className="absolute bottom-60 left-10 z-30 pixel-panel p-8 flex flex-col gap-6 w-400">
       <div className="flex items-center justify-between gap-8">
         <span className="text-sm whitespace-nowrap">직원 관리</span>
-        <Button variant="default" size="sm" onClick={() => setIsOpen(false)} title="닫기">
+        <Button variant="default" size="sm" onClick={onClose} title="닫기">
           ✕
         </Button>
       </div>

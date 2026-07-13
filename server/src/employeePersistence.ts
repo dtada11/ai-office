@@ -18,6 +18,8 @@ export interface SavedEmployee {
   cwd: string;
   /** vp = the boss's assistant, the only one who may delegate. */
   role: 'vp' | 'staff';
+  /** The model they were last working on. Absent = start them on the office default. */
+  model?: string;
   /** The AI this employee brings themselves. Absent = follow the office default,
    *  which is why it is only written for employees who actually override it. */
   provider?: EmployeeProvider;

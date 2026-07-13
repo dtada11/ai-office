@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { readOfficeProvider, writeOfficeProvider } from './aiProvider.js';
+import { readOfficeProvider } from './aiProvider.js';
 
 /** The model employees run on, and the context window that implies.
  *
@@ -51,11 +51,4 @@ export function getConfiguredModel(): string | undefined {
 /** Context window for the configured model: 1M for "[1m]" variants, else 200k. */
 export function getContextLimit(): number {
   return getConfiguredModel()?.includes('[1m]') ? CONTEXT_LIMIT_1M : CONTEXT_LIMIT_DEFAULT;
-}
-
-/** Store the model as the office default. Applies to employees hired from now on;
- *  running sessions are switched separately (setEmployeeModel), which is immediate. */
-export function setConfiguredModel(model: string): boolean {
-  writeOfficeProvider({ ...readOfficeProvider(), model });
-  return true;
 }

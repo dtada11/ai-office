@@ -112,7 +112,7 @@ export interface OfficeProviderInfo {
 }
 
 export interface ChatEntry {
-  kind: 'user' | 'text' | 'tool' | 'result';
+  kind: 'user' | 'text' | 'tool' | 'result' | 'system';
   text: string;
 }
 

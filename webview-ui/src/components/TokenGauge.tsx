@@ -13,30 +13,12 @@ import type { AgentTokenInfo, EmployeeInfo, PlanUsageInfo } from '../hooks/useEx
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
 
-/** Top-right context-token gauge with a model dropdown.
- *  Shows the selected (or first) agent's latest request context size against
- *  the model's context window. The dropdown writes the chosen model into
- *  ~/.claude/settings.json — Claude Code applies it to NEW sessions only. */
+/** Top-right context-token gauge. Shows the selected (or first) agent's latest
+ *  request context size against the model's context window, plus the plan gauges.
+ *  Model choice does not live here: an employee is put on their model from their
+ *  own chat window, one at a time. */
 
 const DEFAULT_CONTEXT_LIMIT = 200_000;
-
-const MODEL_OPTIONS = [
-  { id: 'claude-fable-5[1m]', label: 'Fable 5 (1M)' },
-  { id: 'claude-fable-5', label: 'Fable 5' },
-  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
-];
-
-function displayModel(id?: string): string {
-  if (!id) return '감지 중…';
-  const found = MODEL_OPTIONS.find((m) => m.id === id || m.id.replace(/\[1m\]$/, '') === id);
-  if (found) return found.label;
-  return id
-    .replace(/^claude-/, '')
-    .replace(/-\d{8}$/, '')
-    .replace(/-/g, ' ');
-}
 
 function fuelColor(ratio: number): string {
   if (ratio >= TOKEN_CRITICAL_THRESHOLD) return FUEL_COLOR_CRITICAL;
@@ -107,10 +89,7 @@ export function TokenGauge({
   planUsage,
   employees,
 }: TokenGaugeProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  /** What the user just picked — shown until the session reports what it used. */
-  const [picked, setPicked] = useState('');
 
   // The server answers with a fresh planUsage broadcast; clear the spinner then.
   useEffect(() => {
@@ -136,37 +115,8 @@ export function TokenGauge({
   const remaining = Math.max(0, limit - used);
   const ratio = Math.min(1, used / limit);
 
-  // No "saved" notice: the label itself is the confirmation — it shows the
-  // pick right away, then the model the session actually replied with.
-  const handleSelect = (id: string) => {
-    transport.send({ type: 'setClaudeModel', model: id });
-    setPicked(id);
-    setIsOpen(false);
-  };
-
   return (
     <div className="absolute top-10 right-10 z-20 pixel-panel p-8 flex flex-col gap-4 min-w-128">
-      <div className="relative flex items-center justify-between gap-8">
-        <span className="text-sm text-text-muted whitespace-nowrap">모델</span>
-        <Button variant="default" size="sm" onClick={() => setIsOpen((v) => !v)}>
-          {displayModel(employee?.model || picked || info?.model)} ▾
-        </Button>
-        {isOpen && (
-          <div className="absolute top-full right-0 pt-4 z-30">
-            <div className="bg-bg border-2 border-border rounded-none shadow-pixel p-4">
-              {MODEL_OPTIONS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => handleSelect(m.id)}
-                  className="block w-full text-left py-2 px-12 bg-transparent border-none rounded-none cursor-pointer whitespace-nowrap hover:bg-btn-bg"
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
       <div className="border-2 border-border rounded-none h-10 overflow-hidden">
         <div
           className="h-full"

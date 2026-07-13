@@ -56,7 +56,6 @@ export type ClientMessage =
   | SetHooksEnabled
   | SetHooksInfoShown
   | SetWatchAllSessions
-  | SetClaudeModel
   | ExportLayout
   | ImportLayout
   | OpenSessionsFolder
@@ -68,6 +67,7 @@ export type ClientMessage =
   | HireEmployee
   | FireEmployee
   | SendAgentMessage
+  | SetAgentModel
   | AgentPermissionDecision
   | RefreshPlanUsage
   | SetOfficeProvider;
@@ -251,7 +251,7 @@ export interface AgentSessionEvent {
   text: string;
 }
 
-export type AgentEventKind = 'user' | 'text' | 'tool' | 'result';
+export type AgentEventKind = 'user' | 'text' | 'tool' | 'result' | 'system';
 
 export interface AgentPermissionRequest {
   type: 'agentPermissionRequest';
@@ -436,11 +436,6 @@ export interface SetWatchAllSessions {
   enabled: boolean;
 }
 
-export interface SetClaudeModel {
-  type: 'setClaudeModel';
-  model: string;
-}
-
 export interface ExportLayout {
   type: 'exportLayout';
 }
@@ -501,6 +496,12 @@ export interface SendAgentMessage {
   type: 'sendAgentMessage';
   agentId: number;
   text: string;
+}
+
+export interface SetAgentModel {
+  type: 'setAgentModel';
+  agentId: number;
+  model: string;
 }
 
 export interface AgentPermissionDecision {

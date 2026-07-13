@@ -188,3 +188,13 @@ export const PET_THUMB_SCALE_MARGIN = 0.85;
 export const EMPTY_SPRITE_THUMBNAIL_BG = '#333';
 /** Maximum string length for a PlacedPet.id (defends against pathologically-long layout entries). */
 export const MAX_PET_ID_LENGTH = 128;
+
+// ── Employee chat windows ───────────────────────────────────
+/** Where the first chat window opens (px from the top-left of the office). */
+export const CHAT_START_PX = 40;
+/** Each further window opens this much down-right of the last, so all stay readable. */
+export const CHAT_STAGGER_PX = 40;
+/** Horizontal px of a dragged window that must stay on screen — enough to grab it back. */
+export const CHAT_MIN_VISIBLE_PX = 80;
+/** Vertical px that must stay on screen: the header, which is the drag handle. */
+export const CHAT_HEADER_VISIBLE_PX = 32;
