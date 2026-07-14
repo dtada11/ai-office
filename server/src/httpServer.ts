@@ -58,7 +58,11 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     bodyLimit: MAX_HOOK_BODY_SIZE,
   });
 
-  await app.register(fastifyCors, { origin: true });
+  await app.register(fastifyCors, {
+    origin: (origin, cb) => {
+      cb(null, isAllowedWsOrigin(origin));
+    },
+  });
   await app.register(fastifyWebsocket);
 
   // Static SPA serving (standalone mode only)
@@ -133,11 +137,41 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
 
 // ── WebSocket ──────────────────────────────────────────────────
 
+/** True if a WebSocket handshake (or CORS request) from this Origin should be
+ *  let through. A missing Origin means a non-browser caller — hook scripts,
+ *  curl, a future desktop client — since browsers always send one; the attack
+ *  this guards against (a malicious webpage's JS opening `ws://127.0.0.1:.../ws`)
+ *  necessarily carries an Origin, so letting Origin-less callers through does
+ *  not reopen that hole. 127.0.0.1 binding alone does not stop this: the
+ *  browser making the connection is local, so bind-address checks never see
+ *  a remote peer. Exported for unit testing. */
+export function isAllowedWsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  // The embedded webview's own scheme — Bearer auth already covers embedded
+  // mode, but this is a harmless second layer.
+  if (origin.startsWith('vscode-webview://')) return true;
+  let hostname: string;
+  try {
+    hostname = new URL(origin).hostname;
+  } catch {
+    return false;
+  }
+  // Port is intentionally not compared — the listen port is dynamic in
+  // embedded mode, so pinning it here would be both wrong and fragile.
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
+}
+
 function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
-    // In standalone mode (not embedded), skip auth for WebSocket connections.
-    // The server binds to 127.0.0.1, so only local clients can connect.
-    // In embedded mode (VS Code), require Bearer token for security.
+    // Applies in both standalone and embedded mode. 127.0.0.1 binding does not
+    // stop a malicious webpage's own JS from opening this WebSocket — the
+    // browser making that connection is itself local (see isAllowedWsOrigin).
+    if (!isAllowedWsOrigin(request.headers.origin)) {
+      socket.close(4003, 'forbidden origin');
+      return;
+    }
+
+    // In embedded mode (VS Code), also require Bearer token.
     if (options.embedded) {
       const auth = request.headers.authorization ?? '';
       const expected = `Bearer ${options.token}`;
