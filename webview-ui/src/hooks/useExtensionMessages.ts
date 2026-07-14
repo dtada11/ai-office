@@ -127,6 +127,9 @@ export interface OfficeProviderInfo {
 export interface ChatEntry {
   kind: 'user' | 'text' | 'tool' | 'result' | 'system';
   text: string;
+  /** Raw JSON of a tool call's input. Only set for `tool` entries — parsing
+   *  and formatting it for display is this hook's caller's job. */
+  input?: string;
 }
 
 export interface PermissionRequest {
@@ -683,6 +686,7 @@ export function useExtensionMessages(
         const agentId = msg.agentId as number;
         const kind = msg.kind as ChatEntry['kind'];
         const text = msg.text as string;
+        const input = msg.input as string | undefined;
         // Busy tracking runs ahead of the early return below so a silent
         // clean-turn result still clears the "처리 중" indicator.
         if (kind === 'tool') {
@@ -698,11 +702,13 @@ export function useExtensionMessages(
         setChatLogs((prev) => {
           const log = prev[agentId] ?? [];
           const last = log[log.length - 1];
-          // Merge consecutive chunks of the same kind to keep the list small.
+          // Merge consecutive chunks of the same kind to keep the list small —
+          // except tool calls, which never merge: each is its own call with
+          // its own input, even back-to-back calls of the same tool.
           const merged =
-            last && last.kind === kind && kind !== 'user'
+            last && last.kind === kind && kind !== 'user' && kind !== 'tool'
               ? [...log.slice(0, -1), { kind, text: last.text + text }]
-              : [...log, { kind, text }];
+              : [...log, { kind, text, ...(input !== undefined ? { input } : {}) }];
           return { ...prev, [agentId]: merged };
         });
       } else if (msg.type === 'agentPermissionRequest') {

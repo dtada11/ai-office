@@ -37,8 +37,9 @@ export type EmployeeEvent =
   | { kind: 'ready'; sessionId: string }
   /** A chunk of the assistant's answer. */
   | { kind: 'text'; text: string }
-  /** A tool the employee is using, by name. */
-  | { kind: 'tool'; text: string }
+  /** A tool the employee is using, by name. `input` is its raw JSON args —
+   *  unset when the block carried none or it could not be stringified. */
+  | { kind: 'tool'; text: string; input?: string }
   /** A turn finished. `text` is set only on error. `costUsd` is what the SESSION has
    *  cost in total so far (not this turn) — and the SDK prices subscription work too,
    *  so a non-zero figure here does not mean anyone was billed. */
@@ -86,6 +87,19 @@ export interface Employee {
   send(text: string): void;
   setModel(model: string): Promise<void>;
   stop(): void;
+}
+
+/** Tool inputs go to the client as raw JSON — the webview owns how they read.
+ *  Capped because an Edit's old_string can be the whole file. */
+const TOOL_INPUT_MAX = 2000;
+function safeStringify(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? undefined : json.slice(0, TOOL_INPUT_MAX);
+  } catch {
+    return undefined; // 순환 참조 등 — 도구 이름만으로도 로그는 성립한다
+  }
 }
 
 // ── Claude implementation ───────────────────────────────────────
@@ -152,7 +166,7 @@ export class ClaudeEmployee implements Employee {
             requestId: options.requestId,
             toolName,
             title: options.title ?? '',
-            input: JSON.stringify(toolInput).slice(0, 500),
+            input: safeStringify(toolInput) ?? '',
           });
           return (
             allowed
@@ -229,11 +243,11 @@ export class ClaudeEmployee implements Employee {
       }
 
       for (const block of message?.content ?? []) {
-        const b = block as { type: string; text?: string; name?: string };
+        const b = block as { type: string; text?: string; name?: string; input?: unknown };
         if (b.type === 'text' && b.text) {
           this.host.onEvent({ kind: 'text', text: b.text });
         } else if (b.type === 'tool_use' && b.name) {
-          this.host.onEvent({ kind: 'tool', text: b.name });
+          this.host.onEvent({ kind: 'tool', text: b.name, input: safeStringify(b.input) });
         }
       }
       return;

@@ -203,7 +203,13 @@ function onEvent(
       // (the prompt only asks them not to make files, not to never use a tool)
       // is not something the user asked for either.
       if (current.handoff) break;
-      store.broadcast({ type: 'agentEvent', agentId, kind: 'tool', text: event.text });
+      store.broadcast({
+        type: 'agentEvent',
+        agentId,
+        kind: 'tool',
+        text: event.text,
+        input: event.input,
+      });
       break;
 
     case 'result': {
@@ -702,10 +708,26 @@ export function sendToEmployee(store: AgentStateStore, agentId: number, text: st
   store.broadcast({ type: 'agentEvent', agentId, kind: 'user', text });
 }
 
-export function resolveEmployeePermission(requestId: string, allow: boolean): void {
+/** Answers a parked tool call, and tells every tab what was decided — so
+ *  "아까 뭘 승인했더라" has an answer even after the permission card is gone.
+ *  agentId/toolName are not on the wire message that triggers this (only
+ *  requestId and allow are); they come from the same pending-request entry
+ *  the decision itself resolves, captured before resolve() lets it go. */
+export function resolveEmployeePermission(
+  store: AgentStateStore,
+  requestId: string,
+  allow: boolean,
+): void {
   const pending = pendingPermissions.get(requestId);
   if (!pending) return;
+  const { agentId, ask } = pending;
   pending.resolve(allow);
+  store.broadcast({
+    type: 'agentEvent',
+    agentId,
+    kind: 'system',
+    text: allow ? `허용: ${ask.toolName}` : `거부: ${ask.toolName}`,
+  });
 }
 
 /** Whether this character is an employee we hired. Closing one from the office would

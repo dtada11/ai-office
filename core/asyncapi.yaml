@@ -662,6 +662,12 @@ components:
           $ref: '#/components/schemas/AgentEventKind'
         text:
           type: string
+        input:
+          type: string
+          description: |
+            The tool call's input, as raw JSON text. Only set when kind is
+            `tool` — every other kind omits it. Parsing and summarizing this
+            is the client's job, not the server's.
 
     AgentPermissionRequest:
       description: |

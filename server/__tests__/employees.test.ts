@@ -251,7 +251,7 @@ describe('employees', () => {
       await hireEmployee(store, '코더', '/work', 'staff', SONNET);
       const allowed = created[0].ask(ASK);
 
-      resolveEmployeePermission(ASK.requestId, true);
+      resolveEmployeePermission(store, ASK.requestId, true);
 
       await expect(allowed).resolves.toBe(true);
       expect(broadcasts).toContainEqual({
@@ -289,9 +289,78 @@ describe('employees', () => {
       void created[0].ask(ASK);
       void created[1].ask(second);
 
-      resolveEmployeePermission(ASK.requestId, false);
+      resolveEmployeePermission(store, ASK.requestId, false);
 
       expect(getPendingPermissionRequests()).toEqual([{ agentId: 2, ask: second }]);
+    });
+
+    it('허용 결정은 로그에 남도록 시스템 이벤트로 broadcast된다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      void created[0].ask(ASK);
+
+      resolveEmployeePermission(store, ASK.requestId, true);
+
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 1,
+        kind: 'system',
+        text: `허용: ${ASK.toolName}`,
+      });
+    });
+
+    it('거부 결정도 로그에 남도록 시스템 이벤트로 broadcast된다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      void created[0].ask(ASK);
+
+      resolveEmployeePermission(store, ASK.requestId, false);
+
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 1,
+        kind: 'system',
+        text: `거부: ${ASK.toolName}`,
+      });
+    });
+
+    it('이미 처리된(사라진) 요청에 대한 결정은 조용히 무시된다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      void created[0].ask(ASK);
+      resolveEmployeePermission(store, ASK.requestId, true);
+      broadcasts.length = 0;
+
+      resolveEmployeePermission(store, ASK.requestId, true);
+
+      expect(broadcasts).toEqual([]);
+    });
+  });
+
+  describe('tool events', () => {
+    it('도구 호출 이벤트는 input을 함께 broadcast한다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      created[0].emit({ kind: 'tool', text: 'Edit', input: '{"file_path":"/a.ts"}' });
+
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 1,
+        kind: 'tool',
+        text: 'Edit',
+        input: '{"file_path":"/a.ts"}',
+      });
+    });
+
+    it('input이 없는 도구 이벤트도 여전히 broadcast된다(도구 이름만이라도 남는다)', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      created[0].emit({ kind: 'tool', text: 'Bash' });
+
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 1,
+        kind: 'tool',
+        text: 'Bash',
+        input: undefined,
+      });
     });
   });
 

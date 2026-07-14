@@ -261,6 +261,7 @@ export interface AgentSessionEvent {
   agentId: number;
   kind: AgentEventKind;
   text: string;
+  input?: string;
 }
 
 export type AgentEventKind = 'user' | 'text' | 'tool' | 'result' | 'system';

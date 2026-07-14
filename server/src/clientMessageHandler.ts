@@ -247,7 +247,7 @@ export function handleClientMessage(
       break;
 
     case 'agentPermissionDecision':
-      resolveEmployeePermission(msg.requestId as string, msg.allow as boolean);
+      resolveEmployeePermission(store, msg.requestId as string, msg.allow as boolean);
       break;
 
     case 'refreshPlanUsage':
