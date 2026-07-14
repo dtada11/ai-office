@@ -55,7 +55,6 @@ export function SettingsModal({
       type: 'setOfficeProvider',
       mode: providerMode,
       ...(providerMode === 'apiKey' ? { apiKey: providerSecret.trim() } : {}),
-      ...(providerMode === 'oauthToken' ? { oauthToken: providerSecret.trim() } : {}),
     });
   };
 

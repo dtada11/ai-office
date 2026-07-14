@@ -9,7 +9,6 @@ export type PickedMode = AuthMode | 'office';
 const LABELS: Record<PickedMode, string> = {
   office: '사무실 기본 따름',
   subscription: '구독 (이 PC의 Claude 로그인)',
-  oauthToken: 'setup-token (claude setup-token)',
   apiKey: 'API 키 (종량제)',
 };
 
@@ -34,10 +33,10 @@ export function ProviderPicker({
   hasSecret,
 }: ProviderPickerProps) {
   const modes: PickedMode[] = includeOffice
-    ? ['office', 'subscription', 'oauthToken', 'apiKey']
-    : ['subscription', 'oauthToken', 'apiKey'];
+    ? ['office', 'subscription', 'apiKey']
+    : ['subscription', 'apiKey'];
 
-  const needsSecret = mode === 'apiKey' || mode === 'oauthToken';
+  const needsSecret = mode === 'apiKey';
 
   return (
     <div className="flex flex-col gap-4">
@@ -58,13 +57,7 @@ export function ProviderPicker({
           className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
           value={secret}
           onChange={(e) => onSecretChange(e.target.value)}
-          placeholder={
-            hasSecret
-              ? '저장됨 · 바꾸려면 새로 입력'
-              : mode === 'apiKey'
-                ? 'sk-ant-...'
-                : 'setup-token 값 붙여넣기'
-          }
+          placeholder={hasSecret ? '저장됨 · 바꾸려면 새로 입력' : 'sk-ant-...'}
           data-testid="provider-secret"
         />
       )}

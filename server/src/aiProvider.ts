@@ -23,6 +23,9 @@ function getProviderPath(): string {
 
 /** The env vars the SDK reads, in its own order of precedence. */
 const API_KEY_VAR = 'ANTHROPIC_API_KEY';
+/** We never set this ourselves — subscription and apiKey are the only modes we
+ *  offer — but we still strip it: a stray CLAUDE_CODE_OAUTH_TOKEN left in the
+ *  server host's own environment would otherwise hijack subscription mode. */
 const OAUTH_TOKEN_VAR = 'CLAUDE_CODE_OAUTH_TOKEN';
 
 export interface OfficeProviderConfig extends EmployeeProvider {
@@ -36,8 +39,8 @@ const DEFAULT_OFFICE_PROVIDER: OfficeProviderConfig = { mode: 'subscription' };
 
 let cached: OfficeProviderConfig | null = null;
 
-function isAuthMode(value: unknown): value is AuthMode {
-  return value === 'subscription' || value === 'oauthToken' || value === 'apiKey';
+export function isAuthMode(value: unknown): value is AuthMode {
+  return value === 'subscription' || value === 'apiKey';
 }
 
 export function readOfficeProvider(): OfficeProviderConfig {
@@ -49,7 +52,6 @@ export function readOfficeProvider(): OfficeProviderConfig {
     cached = {
       mode: isAuthMode(raw.mode) ? raw.mode : DEFAULT_OFFICE_PROVIDER.mode,
       apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
-      oauthToken: typeof raw.oauthToken === 'string' ? raw.oauthToken : undefined,
       model: typeof raw.model === 'string' ? raw.model : undefined,
     };
   } catch {
@@ -79,6 +81,19 @@ export function resolveProvider(own?: EmployeeProvider): EmployeeProvider {
   return own ?? readOfficeProvider();
 }
 
+/** Legacy rosters may hold {mode:'oauthToken', oauthToken}. Unknown modes →
+ *  undefined (= follow the office default); the dead field drops on next save. */
+export function normalizeProvider(raw: unknown): EmployeeProvider | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const mode = (raw as { mode?: unknown }).mode;
+  if (mode === 'apiKey') {
+    const apiKey = (raw as { apiKey?: unknown }).apiKey;
+    return { mode: 'apiKey', apiKey: typeof apiKey === 'string' ? apiKey : undefined };
+  }
+  if (mode === 'subscription') return { mode: 'subscription' };
+  return undefined; // oauthToken 등 알 수 없는 모드 → 사무실 기본 따름
+}
+
 /** Everything a client may know about the office default — no secret. */
 export function maskProvider(config: OfficeProviderConfig): {
   mode: AuthMode;
@@ -94,7 +109,6 @@ export function maskProvider(config: OfficeProviderConfig): {
 
 function secretFor(config: EmployeeProvider): string | undefined {
   if (config.mode === 'apiKey') return config.apiKey?.trim() || undefined;
-  if (config.mode === 'oauthToken') return config.oauthToken?.trim() || undefined;
   return undefined;
 }
 
@@ -124,6 +138,5 @@ export function buildEnv(config: EmployeeProvider): Record<string, string> {
 
   const secret = secretFor(config);
   if (config.mode === 'apiKey' && secret) env[API_KEY_VAR] = secret;
-  if (config.mode === 'oauthToken' && secret) env[OAUTH_TOKEN_VAR] = secret;
   return env;
 }

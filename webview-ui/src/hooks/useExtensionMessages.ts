@@ -92,7 +92,7 @@ interface ExtensionMessageState {
   markSending: (agentId: number) => void;
 }
 
-export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
+export type AuthMode = 'subscription' | 'apiKey';
 
 export interface EmployeeInfo {
   agentId: number;

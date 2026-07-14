@@ -252,7 +252,7 @@ export type EmployeeRole = 'vp' | 'staff';
 
 export type EmployeeDuty = 'on' | 'clockingOut' | 'off';
 
-export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
+export type AuthMode = 'subscription' | 'apiKey';
 
 export interface AgentSessionEvent {
   type: 'agentEvent';
@@ -502,7 +502,6 @@ export interface HireEmployee {
 export interface EmployeeProvider {
   mode: AuthMode;
   apiKey?: string;
-  oauthToken?: string;
 }
 
 export interface FireEmployee {
@@ -558,6 +557,5 @@ export interface SetOfficeProvider {
   type: 'setOfficeProvider';
   mode: AuthMode;
   apiKey?: string;
-  oauthToken?: string;
   model?: string;
 }

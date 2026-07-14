@@ -31,7 +31,6 @@ const STAFF_TABS: { id: StaffTabId; label: string }[] = [
 /** What an employee's row says they run on. */
 const MODE_LABEL: Record<string, string> = {
   subscription: '구독',
-  oauthToken: 'setup-token',
   apiKey: 'API 키',
 };
 
@@ -190,18 +189,16 @@ export function StaffPanel({
 
   const hire = () => {
     if (!name.trim() || !cwd.trim()) return;
-    // A key/token mode with nothing typed would hire an employee who cannot
+    // A key mode with nothing typed would hire an employee who cannot
     // authenticate — there is no stored per-employee secret to fall back on.
-    if ((mode === 'apiKey' || mode === 'oauthToken') && !secret.trim()) return;
+    if (mode === 'apiKey' && !secret.trim()) return;
 
     const provider =
       mode === 'office'
         ? undefined
         : mode === 'apiKey'
           ? { mode, apiKey: secret.trim() }
-          : mode === 'oauthToken'
-            ? { mode, oauthToken: secret.trim() }
-            : { mode };
+          : { mode };
 
     transport.send({
       type: 'hireEmployee',

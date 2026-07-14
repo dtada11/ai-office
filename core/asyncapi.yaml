@@ -553,17 +553,16 @@ components:
       description: |
         How an employee's session authenticates to Claude. The mode is decided by
         which credential is injected into the session's environment, following the
-        SDK's own precedence (ANTHROPIC_API_KEY > CLAUDE_CODE_OAUTH_TOKEN > login):
+        SDK's own precedence (ANTHROPIC_API_KEY > login):
 
-        - subscription: no credential injected (both env vars removed), so the SDK
+        - subscription: no credential injected (the env var is removed), so the SDK
           falls back to the local Claude Code login of whoever runs the server.
-        - oauthToken: CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`.
         - apiKey: ANTHROPIC_API_KEY — pay-per-use, the only mode fit for someone
           other than the server's owner.
 
-        Plan gauges only mean something for subscription/oauthToken; an apiKey
-        employee reports accumulated cost in dollars instead.
-      enum: [subscription, oauthToken, apiKey]
+        Plan gauges only mean something for subscription; an apiKey employee
+        reports accumulated cost in dollars instead.
+      enum: [subscription, apiKey]
 
     EmployeeProvider:
       description: |
@@ -579,9 +578,6 @@ components:
         apiKey:
           type: string
           description: Required when mode is apiKey.
-        oauthToken:
-          type: string
-          description: Required when mode is oauthToken.
 
     EmployeeInfo:
       type: object
@@ -1271,9 +1267,6 @@ components:
         apiKey:
           type: string
           description: Required when mode is apiKey. Stored in the home directory only.
-        oauthToken:
-          type: string
-          description: Required when mode is oauthToken. Stored in the home directory only.
         model:
           type: string
           description: |

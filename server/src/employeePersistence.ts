@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { EmployeeProvider } from '../../core/src/messages.js';
+import { normalizeProvider } from './aiProvider.js';
 import { LAYOUT_FILE_DIR } from './constants.js';
 
 function getRosterPath(): string {
@@ -40,7 +41,10 @@ export function readEmployees(): SavedEmployee[] {
     const parsed = JSON.parse(fs.readFileSync(getRosterPath(), 'utf8')) as {
       employees?: SavedEmployee[];
     };
-    return parsed.employees ?? [];
+    return (parsed.employees ?? []).map((e) => ({
+      ...e,
+      provider: normalizeProvider(e.provider),
+    }));
   } catch {
     return [];
   }

@@ -1,7 +1,7 @@
 import type { EmployeeProvider } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import { maskProvider, readOfficeProvider, writeOfficeProvider } from './aiProvider.js';
+import { isAuthMode, maskProvider, readOfficeProvider, writeOfficeProvider } from './aiProvider.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import { getConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
@@ -206,15 +206,19 @@ export function handleClientMessage(
       break;
 
     case 'setOfficeProvider': {
-      const mode = msg.mode as EmployeeProvider['mode'];
       const current = readOfficeProvider();
+      if (!isAuthMode(msg.mode)) {
+        // Invalid mode: ignore the change and resend what is actually on file.
+        send({ type: 'officeProvider', ...maskProvider(current) });
+        break;
+      }
+      const mode = msg.mode;
       // A blank secret means "keep the one on file" — the client never gets the
       // stored value back, so it cannot resend it, and typing over it is the only
       // way to change it.
       const apiKey = (msg.apiKey as string | undefined)?.trim() || current.apiKey;
-      const oauthToken = (msg.oauthToken as string | undefined)?.trim() || current.oauthToken;
       const model = (msg.model as string | undefined) ?? current.model;
-      const next = { mode, apiKey, oauthToken, model };
+      const next = { mode, apiKey, model };
       writeOfficeProvider(next);
       send({ type: 'officeProvider', ...maskProvider(next) });
       console.log(`[Pixel Agents] Office AI set to ${mode} (applies to employees hired from now)`);

@@ -106,6 +106,12 @@ vi.mock('../src/aiProvider.js', () => ({
 const created = ((await import('../src/employee.js')) as unknown as { __created: FakeEmployee[] })
   .__created;
 
+// aiProvider.js is mocked wholesale above (resolveProvider is stubbed so no real
+// office-provider file I/O happens); normalizeProvider is pulled from the real
+// module so the roster-migration test below exercises the actual function.
+const { normalizeProvider } =
+  await vi.importActual<typeof import('../src/aiProvider.js')>('../src/aiProvider.js');
+
 const HAIKU = 'claude-haiku-4-5-20251001';
 const SONNET = 'claude-sonnet-5';
 
@@ -428,6 +434,35 @@ describe('employees', () => {
           employees: [expect.objectContaining({ roleLabel: 'PM', persona: '꼼꼼하게' })],
         }),
       );
+    });
+  });
+
+  describe('legacy provider migration', () => {
+    it('oauthToken 로스터 항목은 사무실 기본으로 폴백하고, 재저장 시 provider가 사라진다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        {
+          name: '코더',
+          cwd: '/work',
+          role: 'staff',
+          // Simulates what employeePersistence.readEmployees() now returns for a
+          // legacy {mode:'oauthToken'} record: normalizeProvider() drops it to
+          // undefined, so the employee has no provider of its own.
+          provider: normalizeProvider({ mode: 'oauthToken', oauthToken: 'x' }),
+        },
+      ]);
+
+      await rehireSavedEmployees(store, SONNET);
+
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ agentId: 1, ownProvider: false })],
+        }),
+      );
+
+      // Any later save (e.g. a persona edit) must not resurrect the dead field.
+      setEmployeePersona(store, 1, '메모');
+      expect(savedRoster()[0]).not.toHaveProperty('provider');
     });
   });
 
