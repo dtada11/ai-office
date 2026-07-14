@@ -15,6 +15,8 @@ interface StaffPanelProps {
   /** Opened from the bottom toolbar, next to 꾸미기 and 설정. */
   isOpen: boolean;
   onClose: () => void;
+  /** Open (or focus, if already open) that employee's persona editor window. */
+  onOpenPersona: (agentId: number) => void;
 }
 
 /** What an employee's row says they run on. */
@@ -24,7 +26,13 @@ const MODE_LABEL: Record<string, string> = {
   apiKey: 'API 키',
 };
 
-export function StaffPanel({ employees, officeProvider, isOpen, onClose }: StaffPanelProps) {
+export function StaffPanel({
+  employees,
+  officeProvider,
+  isOpen,
+  onClose,
+  onOpenPersona,
+}: StaffPanelProps) {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [roleLabel, setRoleLabel] = useState('');
@@ -36,13 +44,6 @@ export function StaffPanel({ employees, officeProvider, isOpen, onClose }: Staff
   // Which employee's title is being edited inline, and the draft text for it.
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
-
-  // Which employee's persona panel is open, its draft text, and whether the last
-  // save for that employee is still the most recent thing shown (cleared by any
-  // further edit, so a stale "saved" notice can never linger past a new change).
-  const [personaOpenId, setPersonaOpenId] = useState<number | null>(null);
-  const [personaDraft, setPersonaDraft] = useState('');
-  const [personaJustSavedId, setPersonaJustSavedId] = useState<number | null>(null);
 
   // Only the VP may delegate, so there is only ever one of them.
   const hasVp = employees.some((e) => e.role === 'vp');
@@ -88,21 +89,6 @@ export function StaffPanel({ employees, officeProvider, isOpen, onClose }: Staff
   const saveLabel = (agentId: number) => {
     transport.send({ type: 'renameEmployee', agentId, roleLabel: labelDraft.trim() });
     setEditingLabelId(null);
-  };
-
-  const togglePersona = (e: EmployeeInfo) => {
-    if (personaOpenId === e.agentId) {
-      setPersonaOpenId(null);
-      return;
-    }
-    setPersonaOpenId(e.agentId);
-    setPersonaDraft(e.persona ?? '');
-    setPersonaJustSavedId(null);
-  };
-
-  const savePersona = (agentId: number) => {
-    transport.send({ type: 'setEmployeePersona', agentId, persona: personaDraft });
-    setPersonaJustSavedId(agentId);
   };
 
   if (!isOpen) return null;
@@ -172,8 +158,8 @@ export function StaffPanel({ employees, officeProvider, isOpen, onClose }: Staff
                   </span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Button variant="default" size="sm" onClick={() => togglePersona(e)}>
-                    지침 {personaOpenId === e.agentId ? '닫기' : '보기/수정'}
+                  <Button variant="default" size="sm" onClick={() => onOpenPersona(e.agentId)}>
+                    지침 보기/수정
                   </Button>
                   <Button
                     variant="default"
@@ -185,31 +171,6 @@ export function StaffPanel({ employees, officeProvider, isOpen, onClose }: Staff
                   </Button>
                 </div>
               </div>
-
-              {personaOpenId === e.agentId && (
-                <div className="flex flex-col gap-4 border-2 border-border rounded-none p-4">
-                  <textarea
-                    className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none resize-none"
-                    rows={4}
-                    value={personaDraft}
-                    onChange={(ev) => {
-                      setPersonaDraft(ev.target.value);
-                      setPersonaJustSavedId(null);
-                    }}
-                    placeholder="이 직원의 역할·성격·주의사항을 적어주세요 (선택)"
-                  />
-                  <div className="flex items-center gap-4">
-                    <Button variant="default" size="sm" onClick={() => savePersona(e.agentId)}>
-                      저장
-                    </Button>
-                    {personaJustSavedId === e.agentId && (
-                      <span className="text-2xs text-text-muted">
-                        저장됨 — 이 직원을 다음에 다시 고용할 때부터 적용됩니다
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>

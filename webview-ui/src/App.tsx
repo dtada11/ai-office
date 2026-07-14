@@ -9,6 +9,7 @@ import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { EmployeeChat } from './components/EmployeeChat.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { PersonaEditor } from './components/PersonaEditor.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { TokenGauge } from './components/TokenGauge.js';
@@ -34,6 +35,10 @@ import { transport } from './transport/index.js';
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null };
 const editorState = new EditorState();
+
+/** How far right of a fresh chat window's stagger a persona editor opens —
+ *  clear of both the chat window stack and the staff panel's left column. */
+const PERSONA_EDITOR_X_OFFSET = 460;
 
 // Test-only observability hooks (message/sound logs, addAgent wrapper, selectAgent).
 // Installed only under the e2e harness so they never patch prototypes or grow
@@ -111,6 +116,43 @@ function App() {
 
   const handleChatFocus = useCallback((agentId: number) => {
     setOpenChats((prev) => bringToFront(prev, agentId));
+  }, []);
+
+  /** Persona editor windows, same ownership pattern as the chat windows above —
+   *  a separate list so opening one never has to fight the staff panel or a
+   *  chat window for the same position/front-most slot. */
+  const [openPersonaEditors, setOpenPersonaEditors] = useState<number[]>([]);
+  const [personaPositions, setPersonaPositions] = useState<Record<number, ChatPosition>>({});
+
+  const handlePersonaMove = useCallback((agentId: number, position: ChatPosition) => {
+    setPersonaPositions((prev) => ({ ...prev, [agentId]: position }));
+  }, []);
+
+  const handlePersonaFocus = useCallback((agentId: number) => {
+    setOpenPersonaEditors((prev) => bringToFront(prev, agentId));
+  }, []);
+
+  const handleOpenPersona = useCallback((agentId: number) => {
+    setOpenPersonaEditors((prev) =>
+      prev.includes(agentId) ? bringToFront(prev, agentId) : [...prev, agentId],
+    );
+    // Offset well clear of where chat windows stack, so opening a persona editor
+    // never lands directly on top of that employee's already-open chat window.
+    setPersonaPositions((prev) =>
+      prev[agentId]
+        ? prev
+        : {
+            ...prev,
+            [agentId]: {
+              x: initialChatPosition(Object.keys(prev).length).x + PERSONA_EDITOR_X_OFFSET,
+              y: initialChatPosition(Object.keys(prev).length).y,
+            },
+          },
+    );
+  }, []);
+
+  const handlePersonaClose = useCallback((agentId: number) => {
+    setOpenPersonaEditors((prev) => prev.filter((id) => id !== agentId));
   }, []);
 
   // Show migration notice once layout reset is detected
@@ -391,8 +433,24 @@ function App() {
           officeProvider={officeProvider}
           isOpen={isStaffOpen}
           onClose={() => setIsStaffOpen(false)}
+          onOpenPersona={handleOpenPersona}
         />
       )}
+
+      {!editor.isEditMode &&
+        openPersonaEditors
+          .map((agentId) => employees.find((e) => e.agentId === agentId))
+          .filter((e): e is (typeof employees)[number] => e !== undefined)
+          .map((employee) => (
+            <PersonaEditor
+              key={employee.agentId}
+              employee={employee}
+              position={personaPositions[employee.agentId] ?? initialChatPosition(0)}
+              onMove={(position) => handlePersonaMove(employee.agentId, position)}
+              onFocus={() => handlePersonaFocus(employee.agentId)}
+              onClose={() => handlePersonaClose(employee.agentId)}
+            />
+          ))}
 
       {!editor.isEditMode &&
         openChats
