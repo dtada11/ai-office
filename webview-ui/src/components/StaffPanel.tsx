@@ -309,7 +309,7 @@ export function StaffPanel({
             onKeyDown={(e) => {
               if (e.key === 'Enter') hire();
             }}
-            placeholder="담당 폴더 (예: F:\Projects\ai-office)"
+            placeholder="담당 폴더 (절대 경로, 예: C:\Users\me\projects\my-app)"
             data-testid="hire-cwd"
           />
           <select

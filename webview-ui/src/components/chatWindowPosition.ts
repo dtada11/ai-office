@@ -4,6 +4,8 @@
 
 import {
   CHAT_HEADER_VISIBLE_PX,
+  CHAT_MAX_HEIGHT_RATIO,
+  CHAT_MAX_WIDTH_RATIO,
   CHAT_MIN_HEIGHT_PX,
   CHAT_MIN_VISIBLE_PX,
   CHAT_MIN_WIDTH_PX,
@@ -48,17 +50,20 @@ export function bringToFront(openChats: number[], agentId: number): number[] {
 }
 
 /** Never smaller than the min (the window stops being usable below that), and
- *  never larger than the viewport itself — a small margin keeps the resize
- *  handle from dragging a window off both edges at once. */
+ *  never larger than CHAT_MAX_*_RATIO of the viewport — a chat window that
+ *  covers the office hides the very thing this tool is for (seeing what the
+ *  team is doing while you read). At a 0.7 ratio this cap is always tighter
+ *  than "viewport minus a small margin" would have been, so there is no
+ *  separate margin term to reconcile with it. */
 export function clampChatSize(size: ChatSize, viewport: Viewport): ChatSize {
   return {
     width: Math.min(
       Math.max(CHAT_MIN_WIDTH_PX, size.width),
-      Math.max(CHAT_MIN_WIDTH_PX, viewport.width - 40),
+      Math.max(CHAT_MIN_WIDTH_PX, viewport.width * CHAT_MAX_WIDTH_RATIO),
     ),
     height: Math.min(
       Math.max(CHAT_MIN_HEIGHT_PX, size.height),
-      Math.max(CHAT_MIN_HEIGHT_PX, viewport.height - 40),
+      Math.max(CHAT_MIN_HEIGHT_PX, viewport.height * CHAT_MAX_HEIGHT_RATIO),
     ),
   };
 }

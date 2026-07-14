@@ -25,6 +25,13 @@ import { Button } from './ui/Button.js';
  *  of yanking the view out from under someone reading a long result. */
 const SCROLL_STICK_THRESHOLD_PX = 48;
 
+/** Gap above a log entry: tight when it continues the same kind of entry as
+ *  the one before it (e.g. two tool calls from the same turn), generous when
+ *  the kind changes — that's the moment a reader needs the gap to read as
+ *  "someone/something else spoke". */
+const SAME_KIND_GAP = 'mt-6';
+const DIFF_KIND_GAP = 'mt-20';
+
 /** Left-border accent per tool category — read/other stay neutral so only
  *  writes (change something) and execs (run something) draw the eye. */
 const CATEGORY_BORDER: Record<ToolCategory, string> = {
@@ -58,8 +65,20 @@ interface EmployeeChatProps {
 }
 
 /** Copy-to-clipboard with inline feedback, reused by the AI-answer and
- *  tool-input blocks (G-4). */
-function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+ *  tool-input blocks (G-4). Icon-sized so it reads as a control, not a word
+ *  competing with the message text (H-2). `floating` pins it to the block's
+ *  top-right corner and hides it until hover, for the message-flow case;
+ *  the tool-detail case stays inline since that panel is already something
+ *  the user opened on purpose. */
+function CopyButton({
+  text,
+  className = '',
+  floating = false,
+}: {
+  text: string;
+  className?: string;
+  floating?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -76,17 +95,25 @@ function CopyButton({ text, className = '' }: { text: string; className?: string
   };
 
   return (
-    <Button variant="ghost" size="sm" onClick={copy} className={className} title="복사">
-      {copied ? '복사됨' : '복사'}
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={copy}
+      className={`${floating ? 'absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity' : ''} ${className}`}
+      title={copied ? '복사됨' : '복사'}
+    >
+      {copied ? '✓' : '⧉'}
     </Button>
   );
 }
 
 /** My own instruction — right-aligned so it's found at a glance among AI
  *  replies and tool activity, which all sit on the left (G-2). */
-function UserEntry({ text }: { text: string }) {
+function UserEntry({ text, spacing }: { text: string; spacing: string }) {
   return (
-    <div className="self-end max-w-[85%] bg-active-bg border-2 border-accent-bright px-6 py-4 text-xs whitespace-pre-wrap break-words">
+    <div
+      className={`self-end max-w-[85%] bg-active-bg border-2 border-accent-bright px-6 py-4 text-xs whitespace-pre-wrap break-words ${spacing}`}
+    >
       {text}
     </div>
   );
@@ -94,12 +121,15 @@ function UserEntry({ text }: { text: string }) {
 
 /** The employee's own words — the block that most needs to be pleasant to
  *  read, so it gets the plain pixel font (not font-mono) and generous
- *  line-height instead of the terminal look the whole log used to have. */
-function TextEntry({ text }: { text: string }) {
+ *  line-height instead of the terminal look the whole log used to have.
+ *  `group` + `relative` let the copy button dock to the corner and stay
+ *  hidden until hover (H-2), instead of sitting as a labeled button below
+ *  the text and breaking up the reading flow. */
+function TextEntry({ text, spacing }: { text: string; spacing: string }) {
   return (
-    <div className="self-start max-w-full flex flex-col gap-2">
-      <div className="text-xs leading-relaxed whitespace-pre-wrap break-words">{text}</div>
-      <CopyButton text={text} />
+    <div className={`group relative self-start max-w-full ${spacing}`}>
+      <div className="text-xs leading-loose whitespace-pre-wrap break-words pr-20">{text}</div>
+      <CopyButton text={text} floating />
     </div>
   );
 }
@@ -109,7 +139,7 @@ function TextEntry({ text }: { text: string }) {
  *  the server truncates at 2000 chars, so summarizeToolCall/formatToolInput
  *  are the only things allowed to touch it, and both degrade instead of
  *  throwing (see toolSummary.ts). */
-function ToolEntry({ entry }: { entry: ChatEntry }) {
+function ToolEntry({ entry, spacing }: { entry: ChatEntry; spacing: string }) {
   const [expanded, setExpanded] = useState(false);
   const category = categorizeTool(entry.text);
   const name = displayToolName(entry.text);
@@ -118,7 +148,7 @@ function ToolEntry({ entry }: { entry: ChatEntry }) {
 
   return (
     <div
-      className={`self-start max-w-full border-l-2 ${CATEGORY_BORDER[category]} bg-bg-thumb pl-6 pr-4 py-4`}
+      className={`self-start max-w-full border-l-2 ${CATEGORY_BORDER[category]} bg-bg-thumb pl-6 pr-4 py-4 ${spacing}`}
     >
       <button
         type="button"
@@ -145,17 +175,21 @@ function ToolEntry({ entry }: { entry: ChatEntry }) {
  *  doesn't compete with the conversation, except a denial (G-6: 거부는 눈에
  *  띄게) and the "팀장 지시" tag that marks a delegated instruction apart
  *  from something the user typed themselves. */
-function SystemEntry({ text }: { text: string }) {
+function SystemEntry({ text, spacing }: { text: string; spacing: string }) {
   if (text === '팀장 지시') {
     return (
-      <div className="self-start text-2xs text-accent-bright border-2 border-accent px-4 py-1">
+      <div
+        className={`self-start text-2xs text-accent-bright border-2 border-accent px-4 py-1 ${spacing}`}
+      >
         {text}
       </div>
     );
   }
   const isDeny = text.startsWith('거부:');
   return (
-    <div className={`text-center text-2xs ${isDeny ? 'text-danger font-bold' : 'text-text-muted'}`}>
+    <div
+      className={`text-center text-2xs ${isDeny ? 'text-danger font-bold' : 'text-text-muted'} ${spacing}`}
+    >
       {text}
     </div>
   );
@@ -164,9 +198,11 @@ function SystemEntry({ text }: { text: string }) {
 /** Only errors reach here — the server sends nothing on a clean turn and the
  *  hook drops it, so `danger` here is already correct. Left untouched per
  *  the design brief; do not "fix" this color. */
-function ResultEntry({ text }: { text: string }) {
+function ResultEntry({ text, spacing }: { text: string; spacing: string }) {
   return (
-    <div className="self-start max-w-full border-l-2 border-danger pl-6 py-2 text-xs text-danger whitespace-pre-wrap break-words">
+    <div
+      className={`self-start max-w-full border-l-2 border-danger pl-6 py-2 text-xs text-danger whitespace-pre-wrap break-words ${spacing}`}
+    >
       {text}
     </div>
   );
@@ -407,7 +443,7 @@ export function EmployeeChat({
         <div
           ref={logRef}
           onScroll={handleLogScroll}
-          className="h-full overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 flex flex-col gap-6"
+          className="h-full overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 flex flex-col"
           data-testid="chat-log"
         >
           {log.length === 0 ? (
@@ -416,17 +452,23 @@ export function EmployeeChat({
             </div>
           ) : (
             log.map((e, i) => {
+              // No gap above the first entry; otherwise tight if this entry
+              // continues the same kind as the one before it, generous if
+              // the kind changed (H-3) — that's the reader's cue that
+              // something else just spoke.
+              const spacing =
+                i === 0 ? '' : e.kind === log[i - 1].kind ? SAME_KIND_GAP : DIFF_KIND_GAP;
               switch (e.kind) {
                 case 'user':
-                  return <UserEntry key={i} text={e.text} />;
+                  return <UserEntry key={i} text={e.text} spacing={spacing} />;
                 case 'text':
-                  return <TextEntry key={i} text={e.text} />;
+                  return <TextEntry key={i} text={e.text} spacing={spacing} />;
                 case 'tool':
-                  return <ToolEntry key={i} entry={e} />;
+                  return <ToolEntry key={i} entry={e} spacing={spacing} />;
                 case 'system':
-                  return <SystemEntry key={i} text={e.text} />;
+                  return <SystemEntry key={i} text={e.text} spacing={spacing} />;
                 case 'result':
-                  return <ResultEntry key={i} text={e.text} />;
+                  return <ResultEntry key={i} text={e.text} spacing={spacing} />;
               }
             })
           )}

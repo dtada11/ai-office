@@ -22,6 +22,8 @@ import {
 } from '../src/components/chatWindowPosition.js';
 import {
   CHAT_HEADER_VISIBLE_PX,
+  CHAT_MAX_HEIGHT_RATIO,
+  CHAT_MAX_WIDTH_RATIO,
   CHAT_MIN_HEIGHT_PX,
   CHAT_MIN_VISIBLE_PX,
   CHAT_MIN_WIDTH_PX,
@@ -112,12 +114,25 @@ test('clampChatSize floors a too-small size at the minimum', () => {
   });
 });
 
-test('clampChatSize caps a too-large size at the viewport minus margin', () => {
+test('clampChatSize caps a too-large size at CHAT_MAX_*_RATIO of the viewport', () => {
   const viewport = { width: 1200, height: 800 };
   assert.deepEqual(clampChatSize({ width: 5000, height: 5000 }, viewport), {
-    width: viewport.width - 40,
-    height: viewport.height - 40,
+    width: viewport.width * CHAT_MAX_WIDTH_RATIO,
+    height: viewport.height * CHAT_MAX_HEIGHT_RATIO,
   });
+});
+
+test('clampChatSize lets a window grow right up to the 70% cap, no further', () => {
+  const viewport = { width: 2000, height: 1000 };
+  const atCap = {
+    width: viewport.width * CHAT_MAX_WIDTH_RATIO,
+    height: viewport.height * CHAT_MAX_HEIGHT_RATIO,
+  };
+  assert.deepEqual(clampChatSize(atCap, viewport), atCap);
+  assert.deepEqual(
+    clampChatSize({ width: atCap.width + 1, height: atCap.height + 1 }, viewport),
+    atCap,
+  );
 });
 
 test('clampChatSize never returns less than the minimum even in a tiny viewport', () => {

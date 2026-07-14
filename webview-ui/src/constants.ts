@@ -200,3 +200,8 @@ export const CHAT_HEADER_VISIBLE_PX = 32;
  *  a couple of log lines, and the input row. */
 export const CHAT_MIN_WIDTH_PX = 340;
 export const CHAT_MIN_HEIGHT_PX = 320;
+/** Largest a resized chat window can grow to, as a fraction of the viewport.
+ *  A chat that covers the office defeats the point of a pixel office: you're
+ *  supposed to be able to see who's doing what while you read. */
+export const CHAT_MAX_WIDTH_RATIO = 0.7;
+export const CHAT_MAX_HEIGHT_RATIO = 0.7;

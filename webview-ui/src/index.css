@@ -1,5 +1,25 @@
 @import 'tailwindcss';
 
+/* FS Pixel Sans ships with zero Hangul/CJK glyphs (checked the .ttf's cmap
+ * directly) — Korean text has always fallen through to the OS sans-serif
+ * regardless of this rule, and always will. The actual mismatch is Latin:
+ * this face's own glyphs sit far below a normal cap-height (measured ~0.44
+ * of em vs. ~0.72 for the fallback font that ends up rendering the Hangul
+ * next to it), so Latin/digits/punctuation look shrunken at the same
+ * font-size. This first, narrower face carries the size-adjust correction
+ * for just that range; the second, unrestricted face below is the original
+ * declaration untouched, so every other glyph this file does have (arrows,
+ * box-drawing, etc.) keeps rendering exactly as before, and Hangul keeps
+ * falling through to the system font exactly as before. */
+@font-face {
+  font-family: 'FS Pixel Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/FSPixelSansUnicode-Regular.ttf') format('truetype');
+  unicode-range: U+0000-00FF, U+2000-206F, U+20A0-20CF, U+2100-214F;
+  size-adjust: 150%;
+}
 @font-face {
   font-family: 'FS Pixel Sans';
   font-style: normal;
@@ -97,6 +117,32 @@
 
   * {
     @apply font-pixel;
+  }
+
+  /* Square, token-colored scrollbar everywhere — --color-bg-thumb existed
+   * but nothing consumed it, so every scroll area (chat log, staff list,
+   * expanded tool output, ...) showed the browser's default rounded-gray
+   * bar, out of place in a pixel-art UI. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg-dark);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-bg-thumb);
+    border: 2px solid var(--color-border);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-btn-hover);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: var(--color-bg-dark);
   }
 }
 
