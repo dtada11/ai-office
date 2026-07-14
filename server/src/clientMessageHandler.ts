@@ -9,6 +9,7 @@ import {
   fireEmployee,
   getPendingPermissionRequests,
   hireEmployee,
+  isEmployee,
   resolveEmployeePermission,
   sendStaffTo,
   sendToEmployee,
@@ -77,6 +78,20 @@ export function handleClientMessage(
         send({ type: 'agentPermissionRequest', agentId, ...ask });
       }
       break;
+
+    // The × over a character. Employees are exempt — their session would keep running
+    // and their name would stay on the roster, so they come back on the next restart.
+    // Firing them from the staff panel is the way to let an employee go.
+    case 'closeAgent': {
+      const id = msg.id as number;
+      const agent = store.get(id);
+      if (agent && runtime && !isEmployee(id)) {
+        // Dismiss the transcript too, or the external scanner adopts it straight back.
+        runtime.dismissalTracker.dismiss(agent.jsonlFile);
+        runtime.removeAgent(id);
+      }
+      break;
+    }
 
     case 'saveLayout':
       if (msg.layout) {

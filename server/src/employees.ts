@@ -338,6 +338,12 @@ export function resolveEmployeePermission(requestId: string, allow: boolean): vo
   pending.resolve(allow);
 }
 
+/** Whether this character is an employee we hired. Closing one from the office would
+ *  leave their session running and their name on the roster — firing is the way out. */
+export function isEmployee(agentId: number): boolean {
+  return staff.has(agentId);
+}
+
 /** Every request still waiting on the user — what a client that just connected has
  *  to be told about, or it would show an office with nobody asking for anything. */
 export function getPendingPermissionRequests(): Array<{ agentId: number; ask: PermissionAsk }> {
