@@ -64,6 +64,13 @@ export interface AgentState {
   leadAgentId?: number;
   /** True when lead spawns teammates via tmux (run_in_background Agent calls) */
   teamUsesTmux?: boolean;
+
+  // -- Employee appearance --
+  /** Set only when this character is an employee re-hired from the roster (or
+   *  clocked back in) with a saved look. Undefined for a brand-new hire — the
+   *  webview picks the palette and reports it back via saveAgentSeats. */
+  palette?: number;
+  hueShift?: number;
 }
 
 export interface PersistedAgent {

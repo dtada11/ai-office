@@ -18,6 +18,7 @@ import {
   sendToEmployee,
   setEmployeeModelFor,
   setEmployeePersona,
+  setEmployeeSeat,
 } from './employees.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
@@ -105,9 +106,21 @@ export function handleClientMessage(
 
     case 'saveAgentSeats':
       if (msg.seats) {
-        adapter?.saveSeats(
-          msg.seats as Record<string, { palette?: number; hueShift?: number; seatId?: string }>,
-        );
+        const seats = msg.seats as Record<
+          string,
+          { palette?: number; hueShift?: number; seatId?: string }
+        >;
+        adapter?.saveSeats(seats);
+        // Employees additionally freeze their look into the roster (keyed by
+        // identity, not agentId) so it survives a restart or a fire/rehire
+        // elsewhere on the roster. Terminal sessions have no roster entry —
+        // setEmployeeSeat() is a no-op for them.
+        for (const [agentIdStr, seat] of Object.entries(seats)) {
+          const agentId = Number(agentIdStr);
+          if (isEmployee(agentId)) {
+            setEmployeeSeat(agentId, seat.palette, seat.hueShift);
+          }
+        }
       }
       break;
 

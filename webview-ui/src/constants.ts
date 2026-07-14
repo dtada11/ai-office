@@ -126,8 +126,6 @@ export const INACTIVE_SEAT_TIMER_MIN_SEC = 3.0;
 export const INACTIVE_SEAT_TIMER_RANGE_SEC = 2.0;
 /** Default/fallback palette count (bundled characters). Actual count comes from getLoadedCharacterCount(). */
 export const PALETTE_COUNT = 6;
-/** Pin every agent to this character (char_3 = 커스텀 비서 캐릭터). null = 원본의 랜덤 배정. */
-export const PINNED_PALETTE: number | null = 3;
 export const HUE_SHIFT_MIN_DEG = 45;
 export const HUE_SHIFT_RANGE_DEG = 271;
 export const AUTO_ON_FACING_DEPTH = 3;

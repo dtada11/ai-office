@@ -198,6 +198,16 @@ components:
           type: string
         isExternal:
           type: boolean
+        palette:
+          type: integer
+          description: |
+            Employees only. The look frozen on their roster entry (rehire, or
+            clock-in after a clock-out). Absent for a brand-new hire — the
+            webview picks one via pickDiversePalette() and reports it back
+            through saveAgentSeats.
+        hueShift:
+          type: integer
+          description: Hue rotation in degrees, paired with palette.
 
     AgentClosed:
       description: An agent has been removed from the office.

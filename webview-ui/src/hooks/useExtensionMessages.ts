@@ -297,7 +297,12 @@ export function useExtensionMessages(
             ch.agentName = teammateName;
           }
         } else {
-          os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
+          // Employees carry their roster-frozen look (rehire, or clock-in after a
+          // clock-out); undefined for a brand-new hire, so addAgent() falls through
+          // to pickDiversePalette() and saveAgentSeats() below reports the pick back.
+          const palette = msg.palette as number | undefined;
+          const hueShift = msg.hueShift as number | undefined;
+          os.addAgent(id, palette, hueShift, undefined, undefined, folderName);
         }
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {

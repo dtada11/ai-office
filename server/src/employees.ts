@@ -91,6 +91,12 @@ interface Staff {
   /** Set when clockOut() is called mid-turn: the handoff summary starts once the
    *  in-flight turn's own result arrives, not before. */
   pendingClockOut?: boolean;
+  /** The look assigned on first spawn, frozen here (and in the roster) so it
+   *  survives a restart or a fire/rehire elsewhere on the roster — appearance
+   *  is tied to this employee, not to their agentId. Undefined until the
+   *  webview's saveAgentSeats reports the palette pickDiversePalette() chose. */
+  palette?: number;
+  hueShift?: number;
 }
 
 /** A request the user has not answered yet. The ask is kept whole so it can be
@@ -107,7 +113,7 @@ const pendingPermissions = new Map<string, PendingPermission>();
 
 /** A character for an employee we started ourselves. `isExternal: false` keeps the
  *  stale-check (which only despawns external agents) from removing it. */
-function newCharacter(id: number, cwd: string): AgentState {
+function newCharacter(id: number, cwd: string, palette?: number, hueShift?: number): AgentState {
   return {
     id,
     sessionId: '',
@@ -131,6 +137,8 @@ function newCharacter(id: number, cwd: string): AgentState {
     hookDelivered: false,
     inputTokens: 0,
     outputTokens: 0,
+    palette,
+    hueShift,
   };
 }
 
@@ -560,7 +568,7 @@ export async function clockIn(
 
   // Character first, same order as hireEmployee — the office shows them before
   // the session has even confirmed a sessionId (that binding happens on 'ready').
-  store.set(agentId, newCharacter(agentId, current.cwd));
+  store.set(agentId, newCharacter(agentId, current.cwd, current.palette, current.hueShift));
 
   const note = readLatestHandoffNote(current.cwd);
 
@@ -604,13 +612,17 @@ export async function hireEmployee(
   roleLabel?: string,
   /** Their standing instructions, applied as the session starts. */
   persona?: string,
-): Promise<void> {
-  if (!name.trim() || !cwd.trim()) return;
+  /** Their frozen look, carried over from the roster on a rehire. Omitted for a
+   *  brand-new hire — the webview picks one and reports it back via saveAgentSeats. */
+  palette?: number,
+  hueShift?: number,
+): Promise<number | undefined> {
+  if (!name.trim() || !cwd.trim()) return undefined;
 
   // The character comes first: it gives us the agentId everything else is keyed by,
   // and the office shows the employee as soon as they are hired.
   const agentId = store.nextAgentId.current++;
-  store.set(agentId, newCharacter(agentId, cwd));
+  store.set(agentId, newCharacter(agentId, cwd, palette, hueShift));
 
   // Resolved once, at hire time: the session keeps the credential it started with,
   // so changing the office default later cannot swap out a running employee's AI.
@@ -644,6 +656,8 @@ export async function hireEmployee(
     costUsd: 0,
     duty: 'on',
     turnActive: false,
+    palette,
+    hueShift,
   });
   await employee.start(model, role === 'vp' ? delegationFor(store) : undefined, persona);
   broadcastStaff(store);
@@ -651,6 +665,7 @@ export async function hireEmployee(
   console.log(
     `[Pixel Agents] Hired "${name}" (${role}, agent ${agentId}, ${provider.mode}) in ${cwd}`,
   );
+  return agentId;
 }
 
 export function fireEmployee(
@@ -771,6 +786,8 @@ function saveStaff(): void {
       ...(s.model ? { model: s.model } : {}),
       ...(s.ownProvider ? { provider: s.ownProvider } : {}),
       ...(s.duty === 'off' ? { offDuty: true } : {}),
+      ...(s.palette !== undefined ? { palette: s.palette } : {}),
+      ...(s.hueShift !== undefined ? { hueShift: s.hueShift } : {}),
     })),
   );
 }
@@ -794,6 +811,8 @@ function registerOffDutyStaff(store: AgentStateStore, saved: SavedEmployee): voi
     costUsd: 0,
     duty: 'off',
     turnActive: false,
+    palette: saved.palette,
+    hueShift: saved.hueShift,
   });
   broadcastStaff(store);
 }
@@ -806,12 +825,23 @@ export async function rehireSavedEmployees(
   model?: string,
   runtime?: AgentRuntime,
 ): Promise<void> {
+  // The adapter's own agentId→seat map (existingAgents.agentMeta) is keyed by the
+  // agentId each employee happened to get LAST run — stale the moment someone
+  // earlier on the roster is fired, since everyone after them shifts down a slot.
+  // Re-seed it here, under this run's freshly assigned agentIds, so a client that
+  // connects before this employee ever takes a turn (no agentCreated for them —
+  // they were created before any socket was listening) still sees the roster's
+  // frozen look via existingAgents rather than whatever the old agentId's slot held.
+  const adapter = store.getAdapter();
+  const seats = adapter?.loadSeats();
+  let seatsChanged = false;
+
   for (const saved of readEmployees()) {
     if (saved.offDuty) {
       registerOffDutyStaff(store, saved);
       continue;
     }
-    await hireEmployee(
+    const agentId = await hireEmployee(
       store,
       saved.name,
       saved.cwd,
@@ -823,8 +853,37 @@ export async function rehireSavedEmployees(
       saved.provider,
       saved.roleLabel,
       saved.persona,
+      saved.palette,
+      saved.hueShift,
     );
+    if (seats && agentId !== undefined && saved.palette !== undefined) {
+      seats[String(agentId)] = {
+        ...seats[String(agentId)],
+        palette: saved.palette,
+        hueShift: saved.hueShift,
+      };
+      seatsChanged = true;
+    }
   }
+
+  if (seatsChanged && adapter && seats) {
+    adapter.saveSeats(seats);
+  }
+}
+
+/** Record an employee's chosen appearance so it survives a restart or a
+ *  fire/rehire elsewhere on the roster (see the `saveAgentSeats` handler in
+ *  clientMessageHandler.ts, which calls this only when the agentId belongs to
+ *  an employee — a terminal session has no roster entry to freeze this into).
+ *  Returns false when agentId isn't an employee, so the caller knows not to
+ *  treat this as a roster write. */
+export function setEmployeeSeat(agentId: number, palette?: number, hueShift?: number): boolean {
+  const current = staff.get(agentId);
+  if (!current) return false;
+  current.palette = palette;
+  current.hueShift = hueShift;
+  saveStaff();
+  return true;
 }
 
 /** Terminate every employee on server shutdown. */

@@ -21,6 +21,7 @@ import {
   resolveEmployeePermission,
   setEmployeeModelFor,
   setEmployeePersona,
+  setEmployeeSeat,
 } from '../src/employees.js';
 
 /** The employee the registry actually hired, with the session stubbed out: no SDK,
@@ -434,6 +435,59 @@ describe('employees', () => {
           employees: [expect.objectContaining({ roleLabel: 'PM', persona: '꼼꼼하게' })],
         }),
       );
+    });
+  });
+
+  describe('palette/hueShift (외모 고정)', () => {
+    it('setEmployeeSeat: 직원 agentId면 로스터에 기록하고 true를 반환한다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      const result = setEmployeeSeat(1, 3, 90);
+
+      expect(result).toBe(true);
+      expect(savedRoster()[0]).toEqual(expect.objectContaining({ palette: 3, hueShift: 90 }));
+    });
+
+    it('setEmployeeSeat: 직원이 아닌 agentId(터미널 세션)는 false를 반환하고 로스터를 건드리지 않는다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const writes = vi.mocked(writeEmployees).mock.calls.length;
+
+      const result = setEmployeeSeat(999, 3, 90);
+
+      expect(result).toBe(false);
+      expect(vi.mocked(writeEmployees).mock.calls.length).toBe(writes);
+    });
+
+    it('핵심 회귀: 가운데 직원을 해고하고 재시작해도 남은 직원들의 palette는 안 밀린다 (agentId는 밀려도 얼굴은 그대로)', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '1번', cwd: '/a', role: 'staff', palette: 0, hueShift: 0 },
+        { name: '2번', cwd: '/b', role: 'staff', palette: 1, hueShift: 90 },
+        { name: '3번', cwd: '/c', role: 'staff', palette: 2, hueShift: 180 },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      // agentId 1='1번'(palette 0), 2='2번'(palette 1), 3='3번'(palette 2)
+
+      // 2번 해고 후 재시작 시 로스터에 남는 모습을 시뮬레이션 — 2번이 빠지고
+      // 1번·3번만 남는다(순서 유지).
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '1번', cwd: '/a', role: 'staff', palette: 0, hueShift: 0 },
+        { name: '3번', cwd: '/c', role: 'staff', palette: 2, hueShift: 180 },
+      ]);
+
+      // 서버 재시작 시뮬레이션: staff 맵과 store를 모두 새로 만든다.
+      disposeEmployees();
+      created.length = 0;
+      store = new AgentStateStore();
+      broadcasts = [];
+      store.on('broadcast', (msg) => broadcasts.push(msg));
+
+      await rehireSavedEmployees(store, SONNET);
+      // 이번엔 agentId 1='1번', agentId 2='3번' — 3번의 agentId가 3→2로 밀렸다.
+
+      expect(store.get(1)?.palette).toBe(0);
+      expect(store.get(1)?.hueShift).toBe(0);
+      expect(store.get(2)?.palette).toBe(2);
+      expect(store.get(2)?.hueShift).toBe(180);
     });
   });
 

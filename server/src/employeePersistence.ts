@@ -34,6 +34,11 @@ export interface SavedEmployee {
    *  rehireSavedEmployees() registers them off duty instead of starting a
    *  session — no character until the user clocks them back in. */
   offDuty?: boolean;
+  /** The look the webview assigned on first spawn (pickDiversePalette()).
+   *  Frozen here so appearance is tied to this employee, not to their agentId —
+   *  which shifts whenever someone earlier on the roster is fired. */
+  palette?: number;
+  hueShift?: number;
 }
 
 export function readEmployees(): SavedEmployee[] {

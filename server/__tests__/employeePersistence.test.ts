@@ -83,4 +83,24 @@ describe('employeePersistence', () => {
       expect(saved).not.toHaveProperty('provider');
     });
   });
+
+  describe('palette/hueShift round-trip', () => {
+    it('보존한다: 저장한 palette/hueShift가 그대로 읽힌다', () => {
+      writeEmployees([{ name: '코더', cwd: '/work', role: 'staff', palette: 2, hueShift: 90 }]);
+
+      const [employee] = readEmployees();
+
+      expect(employee.palette).toBe(2);
+      expect(employee.hueShift).toBe(90);
+    });
+
+    it('palette가 없는 직원은 필드 자체가 없다 (undefined로 오염되지 않음)', () => {
+      writeRoster([{ name: '코더', cwd: '/work', role: 'staff' }]);
+
+      const [employee] = readEmployees();
+
+      expect(employee).not.toHaveProperty('palette');
+      expect(employee).not.toHaveProperty('hueShift');
+    });
+  });
 });

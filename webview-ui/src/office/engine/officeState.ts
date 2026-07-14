@@ -13,7 +13,6 @@ import {
   MAX_PET_ID_LENGTH,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
-  PINNED_PALETTE,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -329,12 +328,7 @@ export class OfficeState {
 
     let palette: number;
     let hueShift: number;
-    if (PINNED_PALETTE !== null) {
-      // Pinned: ignore preferred/saved values so a stale palette in the state
-      // file can't bring back a different character.
-      palette = PINNED_PALETTE;
-      hueShift = 0;
-    } else if (preferredPalette !== undefined) {
+    if (preferredPalette !== undefined) {
       palette = preferredPalette;
       hueShift = preferredHueShift ?? 0;
     } else {
@@ -501,7 +495,7 @@ export class OfficeState {
 
     const id = this.nextSubagentId--;
     const parentCh = this.characters.get(parentAgentId);
-    const palette = parentCh ? parentCh.palette : (PINNED_PALETTE ?? 0);
+    const palette = parentCh ? parentCh.palette : 0;
     const hueShift = parentCh ? parentCh.hueShift : 0;
 
     // Find the closest walkable tile to the parent, avoiding tiles occupied by other characters
