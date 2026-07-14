@@ -4,7 +4,9 @@
 
 import {
   CHAT_HEADER_VISIBLE_PX,
+  CHAT_MIN_HEIGHT_PX,
   CHAT_MIN_VISIBLE_PX,
+  CHAT_MIN_WIDTH_PX,
   CHAT_STAGGER_PX,
   CHAT_START_PX,
 } from '../constants.js';
@@ -12,6 +14,11 @@ import {
 export interface ChatPosition {
   x: number;
   y: number;
+}
+
+export interface ChatSize {
+  width: number;
+  height: number;
 }
 
 export interface Viewport {
@@ -38,4 +45,20 @@ export function clampChatPosition(pos: ChatPosition, viewport: Viewport): ChatPo
 export function bringToFront(openChats: number[], agentId: number): number[] {
   if (!openChats.includes(agentId)) return openChats;
   return [...openChats.filter((id) => id !== agentId), agentId];
+}
+
+/** Never smaller than the min (the window stops being usable below that), and
+ *  never larger than the viewport itself — a small margin keeps the resize
+ *  handle from dragging a window off both edges at once. */
+export function clampChatSize(size: ChatSize, viewport: Viewport): ChatSize {
+  return {
+    width: Math.min(
+      Math.max(CHAT_MIN_WIDTH_PX, size.width),
+      Math.max(CHAT_MIN_WIDTH_PX, viewport.width - 40),
+    ),
+    height: Math.min(
+      Math.max(CHAT_MIN_HEIGHT_PX, size.height),
+      Math.max(CHAT_MIN_HEIGHT_PX, viewport.height - 40),
+    ),
+  };
 }

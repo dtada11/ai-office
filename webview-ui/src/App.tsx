@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
-import type { ChatPosition } from './components/chatWindowPosition.js';
+import type { ChatPosition, ChatSize } from './components/chatWindowPosition.js';
 import { bringToFront, initialChatPosition } from './components/chatWindowPosition.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
@@ -109,9 +109,17 @@ function App() {
   /** Where each window sits, by agentId. Kept when a window is closed, so re-opening
    *  it puts it back where the user left it. Not written to disk. */
   const [chatPositions, setChatPositions] = useState<Record<number, ChatPosition>>({});
+  /** Explicit size once a window has been resized. Absent = the default
+   *  Tailwind-driven size, same "kept in App, not written to disk" pattern
+   *  as chatPositions above. */
+  const [chatSizes, setChatSizes] = useState<Record<number, ChatSize>>({});
 
   const handleChatMove = useCallback((agentId: number, position: ChatPosition) => {
     setChatPositions((prev) => ({ ...prev, [agentId]: position }));
+  }, []);
+
+  const handleChatResize = useCallback((agentId: number, size: ChatSize) => {
+    setChatSizes((prev) => ({ ...prev, [agentId]: size }));
   }, []);
 
   const handleChatFocus = useCallback((agentId: number) => {
@@ -466,6 +474,8 @@ function App() {
               busyLabel={busyLabel[employee.agentId] ?? ''}
               position={chatPositions[employee.agentId] ?? initialChatPosition(0)}
               onMove={(position) => handleChatMove(employee.agentId, position)}
+              size={chatSizes[employee.agentId]}
+              onResize={(size) => handleChatResize(employee.agentId, size)}
               onFocus={() => handleChatFocus(employee.agentId)}
               onClose={() => setOpenChats((prev) => prev.filter((id) => id !== employee.agentId))}
               onDecided={() => clearPermission(employee.agentId)}

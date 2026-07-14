@@ -5,6 +5,7 @@
  *   1. initialChatPosition — staggered open position by window index
  *   2. clampChatPosition   — keep enough of the header on screen
  *   3. bringToFront        — z-order = render order = array order
+ *   4. clampChatSize       — keep a resized window within [min, viewport]
  *
  * Run with: npm test
  */
@@ -16,11 +17,14 @@ import { test } from 'vitest';
 import {
   bringToFront,
   clampChatPosition,
+  clampChatSize,
   initialChatPosition,
 } from '../src/components/chatWindowPosition.js';
 import {
   CHAT_HEADER_VISIBLE_PX,
+  CHAT_MIN_HEIGHT_PX,
   CHAT_MIN_VISIBLE_PX,
+  CHAT_MIN_WIDTH_PX,
   CHAT_STAGGER_PX,
   CHAT_START_PX,
 } from '../src/constants.js';
@@ -88,4 +92,43 @@ test('bringToFront does not mutate the input array', () => {
   const input = [1, 2, 3];
   bringToFront(input, 2);
   assert.deepEqual(input, [1, 2, 3]);
+});
+
+// ── 4. clampChatSize ──────────────────────────────────────────
+
+test('clampChatSize passes through in-range sizes unchanged', () => {
+  const viewport = { width: 1200, height: 800 };
+  assert.deepEqual(clampChatSize({ width: 500, height: 500 }, viewport), {
+    width: 500,
+    height: 500,
+  });
+});
+
+test('clampChatSize floors a too-small size at the minimum', () => {
+  const viewport = { width: 1200, height: 800 };
+  assert.deepEqual(clampChatSize({ width: 10, height: 10 }, viewport), {
+    width: CHAT_MIN_WIDTH_PX,
+    height: CHAT_MIN_HEIGHT_PX,
+  });
+});
+
+test('clampChatSize caps a too-large size at the viewport minus margin', () => {
+  const viewport = { width: 1200, height: 800 };
+  assert.deepEqual(clampChatSize({ width: 5000, height: 5000 }, viewport), {
+    width: viewport.width - 40,
+    height: viewport.height - 40,
+  });
+});
+
+test('clampChatSize never returns less than the minimum even in a tiny viewport', () => {
+  const viewport = { width: 100, height: 100 };
+  const result = clampChatSize({ width: 5000, height: 5000 }, viewport);
+  assert.ok(
+    result.width >= CHAT_MIN_WIDTH_PX,
+    `expected width >= ${CHAT_MIN_WIDTH_PX}, got ${result.width}`,
+  );
+  assert.ok(
+    result.height >= CHAT_MIN_HEIGHT_PX,
+    `expected height >= ${CHAT_MIN_HEIGHT_PX}, got ${result.height}`,
+  );
 });

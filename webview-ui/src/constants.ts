@@ -196,3 +196,7 @@ export const CHAT_STAGGER_PX = 40;
 export const CHAT_MIN_VISIBLE_PX = 80;
 /** Vertical px that must stay on screen: the header, which is the drag handle. */
 export const CHAT_HEADER_VISIBLE_PX = 32;
+/** Smallest a resized chat window can shrink to — still room for the header,
+ *  a couple of log lines, and the input row. */
+export const CHAT_MIN_WIDTH_PX = 340;
+export const CHAT_MIN_HEIGHT_PX = 320;
