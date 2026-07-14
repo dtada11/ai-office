@@ -50,6 +50,22 @@ const HANDOFF_SUMMARY_PROMPT = `지금 퇴근합니다. 다음 근무자에게 �
 2. 진행 중인 일과 현재 상태 (어디까지 했고 다음 단계는 무엇인지)
 3. 다음 근무자가 알아야 할 것 (주의점·결정사항·막힌 지점)`;
 
+/** A job the lead handed to this member. Not cleared on completion — the lead
+ *  collects it later via collect(), and a cleared slot would lose the answer.
+ *  Lives in memory only: a restart kills every session anyway, so a queued job
+ *  has nothing to come back to. */
+interface StaffDelegation {
+  instruction: string;
+  /** Streamed in from the member's text events while state is 'running', same
+   *  as today. */
+  answer: string;
+  state: 'pending' | 'running' | 'done';
+  /** What collect() awaits for a 'running' (or already-'done') delegation.
+   *  Resolves when the member's turn ends, or on timeout. */
+  done: Promise<string>;
+  resolve: (answer: string) => void;
+}
+
 interface Staff {
   /** Absent only when `duty` is 'off' — a clocked-out employee has no live session. */
   employee?: Employee;
@@ -74,8 +90,8 @@ interface Staff {
    *  on a subscription — the SDK still prices the work — so it is only shown for an
    *  employee on a key, where it is an actual bill rather than a notional one. */
   costUsd: number;
-  /** Set while the VP is waiting on this employee: collect their answer, then resolve. */
-  delegation?: { answer: string; resolve: (answer: string) => void };
+  /** The lead's job for this member, in whatever state it's in. See StaffDelegation. */
+  delegation?: StaffDelegation;
   /** on = live session and character. clockingOut = writing a handoff note, session
    *  still alive. off = no session, no character; stays on the roster, dimmed. */
   duty: EmployeeDuty;
@@ -185,9 +201,11 @@ function onEvent(
 
     case 'text':
       current.turnActive = true;
-      // While the VP is waiting on this employee, their answer is also the
-      // delegation's return value — collect it as it streams.
-      if (current.delegation) current.delegation.answer += event.text;
+      // While a delegation is running, their answer is also collect()'s return
+      // value — collect it as it streams. Guarded to 'running' only: a 'done'
+      // delegation is finished but not yet collected, and a later turn (e.g. the
+      // user chatting with them directly) must not be mistaken for its answer.
+      if (current.delegation?.state === 'running') current.delegation.answer += event.text;
       if (current.handoff) {
         // The handoff summary is an internal turn, not something the user asked
         // for — collect it, but keep it out of the chat log.
@@ -226,8 +244,11 @@ function onEvent(
         broadcastStaff(store);
       }
       const waiting = current.delegation;
-      if (waiting) {
-        current.delegation = undefined;
+      // Only a 'running' delegation is this turn's own — a 'done' one already
+      // resolved (normally or by timeout) and must not be resolved twice; a
+      // stray result for a 'pending' one can't happen (no session is sending).
+      if (waiting?.state === 'running') {
+        waiting.state = 'done';
         waiting.resolve(waiting.answer.trim() || '(팀원이 답을 내놓지 않았습니다)');
       }
       if (current.handoff) {
@@ -309,56 +330,136 @@ function askPermission(
   });
 }
 
-/** The VP's view of the staff, and the way work reaches them. */
+/** What list_staff shows after each team member's name/title — lets the lead see
+ *  who can actually take work right now. */
+function statusLabel(s: Staff): string {
+  if (s.duty === 'clockingOut') {
+    return s.delegation?.state === 'pending' ? '퇴근 중 (지시 보류 중)' : '퇴근 중';
+  }
+  if (s.duty === 'off') {
+    return s.delegation?.state === 'pending' ? '퇴근 (지시 보류 중)' : '퇴근';
+  }
+  return s.delegation?.state === 'running' ? '작업 중' : '대기';
+}
+
+/** Fires a delegation for real: marks it running, starts the 15-minute timeout,
+ *  announces it in the member's own chat, and sends the instruction through the
+ *  normal path (so the office shows the work happening and any approval the
+ *  member needs still lands on the user). Used both by a fresh delegate() and by
+ *  clockIn() auto-firing a delegation that was held pending. */
+function startRunningDelegation(
+  store: AgentStateStore,
+  agentId: number,
+  member: Staff,
+  instruction: string,
+  announcement: string,
+): void {
+  let resolveDone!: (answer: string) => void;
+  const done = new Promise<string>((res) => {
+    resolveDone = res;
+  });
+
+  const timer = setTimeout(() => {
+    // Guarded to 'running': if the real result already landed, this delegation
+    // is already 'done' and its own resolve() already cleared this timer.
+    if (member.delegation?.state === 'running') {
+      member.delegation.state = 'done';
+      resolveDone('시간 초과 — 아직 작업 중일 수 있습니다');
+    }
+  }, DELEGATION_TIMEOUT_MS);
+
+  member.delegation = {
+    instruction,
+    answer: '',
+    state: 'running',
+    done,
+    resolve: (answer) => {
+      clearTimeout(timer);
+      resolveDone(answer);
+    },
+  };
+
+  store.broadcast({ type: 'agentEvent', agentId, kind: 'system', text: announcement });
+  sendToEmployee(store, agentId, instruction);
+}
+
+/** The lead's view of the staff, and the way work reaches them. */
 function delegationFor(store: AgentStateStore): Delegation {
   return {
     listStaff: () => {
       const team = [...staff.values()].filter((s) => s.role === 'staff');
       if (team.length === 0) return '팀원이 없습니다.';
       return team
-        .map((s) => `- ${s.name}${s.roleLabel ? ` / ${s.roleLabel}` : ''} (담당 폴더: ${s.cwd})`)
+        .map(
+          (s) =>
+            `- ${s.name}${s.roleLabel ? ` / ${s.roleLabel}` : ''} — ${statusLabel(s)} (담당 폴더: ${s.cwd})`,
+        )
         .join('\n');
     },
 
-    delegate: (name, instruction) =>
-      new Promise((resolve) => {
-        const entry = [...staff.entries()].find(
-          ([, s]) => s.role === 'staff' && s.name === name.trim(),
-        );
-        if (!entry) {
-          resolve(`"${name}" 이라는 팀원이 없습니다. list_staff로 확인하세요.`);
-          return;
-        }
-        const [agentId, member] = entry;
-        if (member.duty !== 'on') {
-          resolve(`${member.name}은(는) 지금 퇴근 상태입니다. 출근시킨 뒤 다시 시키세요.`);
-          return;
-        }
-        if (member.delegation) {
-          resolve(`${member.name}은(는) 지금 다른 작업 중입니다. 끝난 뒤에 다시 시키세요.`);
-          return;
-        }
+    delegate: (name, instruction) => {
+      const entry = [...staff.entries()].find(
+        ([, s]) => s.role === 'staff' && s.name === name.trim(),
+      );
+      if (!entry) {
+        return `"${name}" 이라는 팀원이 없습니다. list_staff로 확인하세요.`;
+      }
+      const [agentId, member] = entry;
 
-        const timer = setTimeout(() => {
-          if (member.delegation) {
-            member.delegation = undefined;
-            resolve(
-              `${member.name}이(가) 15분 안에 끝내지 못했습니다. 아직 작업 중일 수 있습니다.`,
-            );
+      if (member.delegation?.state === 'running') {
+        return `${member.name}은(는) 지금 작업 중입니다. 끝난 뒤에 다시 시키세요.`;
+      }
+      if (member.delegation?.state === 'pending') {
+        return `${member.name}에게는 이미 보류된 지시가 있습니다.`;
+      }
+      // Only 'done' (finished, not yet collected) can still be here — delegate()
+      // overwrites it rather than refusing, but says so, since silently dropping
+      // an uncollected result would make it vanish without the lead knowing.
+      const overwritingDone = member.delegation?.state === 'done';
+
+      if (member.duty !== 'on') {
+        let resolve!: (answer: string) => void;
+        const done = new Promise<string>((res) => {
+          resolve = res;
+        });
+        member.delegation = { instruction, answer: '', state: 'pending', done, resolve };
+        return `${member.name}은(는) 퇴근 상태입니다. 지시를 보류했습니다 — 출근시키면 바로 시작합니다. 결과는 collect로 받으세요.`;
+      }
+
+      startRunningDelegation(store, agentId, member, instruction, '팀장 지시');
+
+      return overwritingDone
+        ? `${member.name}에게 맡겼습니다. (직전 결과가 수거되지 않아 버려집니다.) 결과는 collect로 받으세요.`
+        : `${member.name}에게 맡겼습니다. 결과는 collect로 받으세요.`;
+    },
+
+    collect: async () => {
+      const entries = [...staff.entries()].filter(([, s]) => s.role === 'staff' && s.delegation);
+      if (entries.length === 0) return '맡긴 일이 없습니다.';
+
+      const sections = await Promise.all(
+        entries.map(async ([, member]) => {
+          const label = `${member.name}${member.roleLabel ? ` / ${member.roleLabel}` : ''}`;
+          // Non-null: this entry passed the s.delegation filter above.
+          const delegation = member.delegation!;
+
+          // Never awaited — the whole point is not to block on a member who
+          // isn't even clocked in yet. Left in place for a later collect() or
+          // clockIn()'s auto-fire to pick up.
+          if (delegation.state === 'pending') {
+            return `### ${label} — 출근 대기 중\n지시: ${delegation.instruction}`;
           }
-        }, DELEGATION_TIMEOUT_MS);
 
-        member.delegation = {
-          answer: '',
-          resolve: (answer) => {
-            clearTimeout(timer);
-            resolve(answer);
-          },
-        };
-        // Goes through the normal path, so the office shows the work happening and
-        // any approval the team member needs still lands on the user.
-        sendToEmployee(store, agentId, instruction);
-      }),
+          // 'running' and already-'done' both funnel through the same await —
+          // a 'done' one's promise is already settled, so this returns at once.
+          const answer = await delegation.done;
+          if (member.delegation === delegation) member.delegation = undefined;
+          return `### ${label}\n${answer}`;
+        }),
+      );
+
+      return sections.join('\n\n');
+    },
   };
 }
 
@@ -601,6 +702,18 @@ export async function clockIn(
     current.persona,
     note ?? undefined,
   );
+
+  // A delegation held while this member was off duty fires now that they have a
+  // live session again — the lead never has to re-issue it.
+  if (current.delegation?.state === 'pending') {
+    startRunningDelegation(
+      store,
+      agentId,
+      current,
+      current.delegation.instruction,
+      '팀장이 맡긴 일을 시작합니다.',
+    );
+  }
 
   saveStaff();
   broadcastStaff(store);

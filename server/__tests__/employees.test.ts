@@ -511,7 +511,7 @@ describe('employees', () => {
   });
 
   describe('listStaff (라우팅 근거)', () => {
-    it('직함이 있으면 포함하고, 없으면 이름과 폴더만 보여준다', async () => {
+    it('직함이 있으면 포함하고, 없으면 이름과 폴더만 보여준다 — 상태도 함께 보여준다', async () => {
       await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
       await hireEmployee(store, '코더', '/work', 'staff', SONNET, undefined, undefined, '개발자');
       await hireEmployee(store, '무직함', '/no-label', 'staff', SONNET);
@@ -519,8 +519,190 @@ describe('employees', () => {
       const delegation = created[0].startedWithDelegation;
       const result = delegation?.listStaff();
 
-      expect(result).toContain('- 코더 / 개발자 (담당 폴더: /work)');
-      expect(result).toContain('- 무직함 (담당 폴더: /no-label)');
+      expect(result).toContain('- 코더 / 개발자 — 대기 (담당 폴더: /work)');
+      expect(result).toContain('- 무직함 — 대기 (담당 폴더: /no-label)');
+    });
+
+    it('작업 중인 팀원은 상태가 "작업 중"으로 보인다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '작업');
+
+      expect(delegation.listStaff()).toContain('- 코더 — 작업 중 (담당 폴더: /work)');
+    });
+  });
+
+  describe('비블로킹 위임 (delegate 즉시 반환 + collect로 수거)', () => {
+    it('연속으로 delegate한 두 건 모두 즉시 반환되고, 둘 다 sendToEmployee가 곧바로 호출된다 (팬아웃)', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      await hireEmployee(store, '검증', '/work2', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      const r1 = delegation.delegate('코더', '로그인 API');
+      const r2 = delegation.delegate('검증', '인증 테스트');
+
+      // 문자열이 즉시 나온다는 것 자체가 "기다리지 않는다"는 증거 — 여전히
+      // Promise를 반환한다면 .toContain은 타입상 실패한다.
+      expect(r1).toContain('코더에게 맡겼습니다');
+      expect(r2).toContain('검증에게 맡겼습니다');
+      expect(created[1].send).toHaveBeenCalledWith('로그인 API');
+      expect(created[2].send).toHaveBeenCalledWith('인증 테스트');
+    });
+
+    it('팀장 지시로 보낸 것임을 팀원 채팅에 system 이벤트로 남긴다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '작업');
+
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 2,
+        kind: 'system',
+        text: '팀장 지시',
+      });
+    });
+
+    it('collect는 running인 위임을 전부 동시에 기다린다 — 하나만 끝나도 반환하지 않고, 둘 다 끝나야 반환한다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      await hireEmployee(store, '검증', '/work2', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '작업1');
+      delegation.delegate('검증', '작업2');
+
+      let settled = false;
+      const collectPromise = delegation.collect().then((r) => {
+        settled = true;
+        return r;
+      });
+
+      // 코더만 먼저 끝난다.
+      created[1].emit({ kind: 'text', text: '코더 결과' });
+      created[1].emit({ kind: 'result', text: '', costUsd: 0 });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false); // 검증이 아직이니 Promise.all은 아직 안 끝난다
+
+      // 검증도 끝난다.
+      created[2].emit({ kind: 'text', text: '검증 결과' });
+      created[2].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const result = await collectPromise;
+      expect(result).toContain('### 코더\n코더 결과');
+      expect(result).toContain('### 검증\n검증 결과');
+    });
+
+    it('아무것도 맡기지 않았으면 collect는 그렇게 보고한다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      await expect(delegation.collect()).resolves.toBe('맡긴 일이 없습니다.');
+    });
+
+    it('퇴근한 팀원에게 delegate하면 pending으로 보류되고 sendToEmployee는 불리지 않는다; collect는 기다리지 않고 즉시 보고한다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '팀장', cwd: '/lead', role: 'lead' },
+        { name: '코더', cwd: '/work', role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      const result = delegation.delegate('코더', '로그인 버그 수정');
+
+      expect(result).toContain('퇴근 상태');
+      expect(result).toContain('보류');
+      expect(created).toHaveLength(1); // 코더는 세션이 없다 — send를 호출할 대상 자체가 없음
+
+      const collected = await delegation.collect();
+      expect(collected).toContain('출근 대기 중');
+      expect(collected).toContain('로그인 버그 수정');
+    });
+
+    it('퇴근 보류 상태에서 출근시키면 지시가 자동으로 발사된다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '팀장', cwd: '/lead', role: 'lead' },
+        { name: '코더', cwd: '/work', role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      const delegation = created[0].startedWithDelegation!;
+      delegation.delegate('코더', '로그인 버그 수정');
+
+      await clockIn(store, 2);
+
+      expect(created).toHaveLength(2);
+      expect(created[1].send).toHaveBeenCalledWith('로그인 버그 수정');
+      expect(broadcasts).toContainEqual({
+        type: 'agentEvent',
+        agentId: 2,
+        kind: 'system',
+        text: '팀장이 맡긴 일을 시작합니다.',
+      });
+    });
+
+    it('작업 중인 팀원에게 또 delegate하면 거부되고 sendToEmployee도 다시 불리지 않는다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+      delegation.delegate('코더', '작업1');
+      created[1].send.mockClear();
+
+      const result = delegation.delegate('코더', '작업2');
+
+      expect(result).toContain('작업 중');
+      expect(created[1].send).not.toHaveBeenCalled();
+    });
+
+    it('보류 중인 팀원에게 또 delegate하면 거부된다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '팀장', cwd: '/lead', role: 'lead' },
+        { name: '코더', cwd: '/work', role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      const delegation = created[0].startedWithDelegation!;
+      delegation.delegate('코더', '작업1');
+
+      const result = delegation.delegate('코더', '작업2');
+
+      expect(result).toContain('이미 보류된 지시');
+    });
+
+    it('done(미수거) 상태인 팀원에게 delegate하면 덮어쓰되 경고 문구가 반환된다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+      delegation.delegate('코더', '작업1');
+      created[1].emit({ kind: 'text', text: '결과1' });
+      created[1].emit({ kind: 'result', text: '', costUsd: 0 });
+      // collect()를 아직 부르지 않았다 — done 상태로 미수거인 채 남아있다.
+
+      const result = delegation.delegate('코더', '작업2');
+
+      expect(result).toContain('버려집니다');
+      expect(created[1].send).toHaveBeenCalledWith('작업2');
+    });
+
+    it('15분 안에 끝나지 않으면 시간 초과로 처리되고 collect가 그 사실을 보고한다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      vi.useFakeTimers();
+      try {
+        delegation.delegate('코더', '오래 걸리는 작업');
+        vi.advanceTimersByTime(15 * 60 * 1000);
+
+        const result = await delegation.collect();
+        expect(result).toContain('시간 초과');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

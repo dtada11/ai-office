@@ -65,12 +65,19 @@ export interface EmployeeHost {
   askPermission(ask: PermissionAsk): Promise<boolean>;
 }
 
-/** What the VP can do that staff cannot: see the staff, and hand work to them.
- *  Passing this in is what makes an employee a VP — nobody else gets the tools. */
+/** What the lead can do that staff cannot: see the staff, hand work to them, and
+ *  gather what came back. Passing this in is what makes an employee a lead —
+ *  nobody else gets the tools. */
 export interface Delegation {
   listStaff(): string;
-  /** Resolves with the team member's answer once their turn finishes. */
-  delegate(name: string, instruction: string): Promise<string>;
+  /** Hands an instruction to a team member and returns immediately with a status
+   *  string — the member works in the background. Their answer comes later,
+   *  from collect(). */
+  delegate(name: string, instruction: string): string;
+  /** Waits for every delegation still running (in parallel), then returns all
+   *  their answers at once. A delegation held on a clocked-out member is
+   *  reported without waiting for it. */
+  collect(): Promise<string>;
 }
 
 export interface Employee {
@@ -278,7 +285,7 @@ export class ClaudeEmployee implements Employee {
   }
 }
 
-/** The VP's own tools, served in-process. Staff never see these — that is what
+/** The lead's own tools, served in-process. Staff never see these — that is what
  *  keeps delegation from spreading down the org chart. */
 function officeTools(sdk: Sdk, delegation: Delegation) {
   const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
@@ -286,17 +293,23 @@ function officeTools(sdk: Sdk, delegation: Delegation) {
   return sdk.createSdkMcpServer({
     name: 'office',
     tools: [
-      sdk.tool('list_staff', '팀원 목록과 각자 담당 폴더를 확인한다.', {}, async () =>
+      sdk.tool('list_staff', '팀원 목록과 각자 담당 폴더, 지금 상태를 확인한다.', {}, async () =>
         text(delegation.listStaff()),
       ),
       sdk.tool(
         'delegate',
-        '팀원에게 작업을 시키고, 그 팀원이 끝낼 때까지 기다렸다가 결과를 받는다.',
+        '팀원에게 작업을 맡긴다. 기다리지 않고 즉시 반환된다 — 여러 팀원에게 연달아 맡길 수 있다. 결과는 collect로 받는다.',
         {
           name: z.string().describe('팀원 이름 (list_staff로 확인)'),
           instruction: z.string().describe('그 팀원에게 줄 지시. 담당 폴더 기준으로 씀'),
         },
-        async (args) => text(await delegation.delegate(args.name, args.instruction)),
+        async (args) => text(delegation.delegate(args.name, args.instruction)),
+      ),
+      sdk.tool(
+        'collect',
+        '맡긴 일이 끝날 때까지 기다렸다가 결과를 전부 모아서 받는다. 팀원 여러 명에게 delegate한 뒤 한 번만 부르면 된다.',
+        {},
+        async () => text(await delegation.collect()),
       ),
     ],
   });
