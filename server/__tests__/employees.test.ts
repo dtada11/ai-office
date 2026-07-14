@@ -3,6 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { normalizeProjectPath } from '../../core/src/normalizeProjectPath.js';
+import type { AgentRuntime } from '../src/agentRuntime.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import type { EmployeeEvent, PermissionAsk } from '../src/employee.js';
 import type { SavedEmployee } from '../src/employeePersistence.js';
@@ -11,6 +13,7 @@ import {
   clockIn,
   clockOut,
   disposeEmployees,
+  fireEmployee,
   getPendingPermissionRequests,
   hireEmployee,
   rehireSavedEmployees,
@@ -24,6 +27,7 @@ import {
  *  no process. `emit` is how a test plays the session talking back, and `ask` is how
  *  it plays a tool call that needs the user's approval. */
 interface FakeEmployee {
+  sessionId: string;
   startedWith: string | undefined;
   startedWithPersona: string | undefined;
   startedWithHandoffNote: string | undefined;
@@ -39,6 +43,7 @@ vi.mock('../src/employee.js', () => {
   const created: FakeEmployee[] = [];
 
   class ClaudeEmployee {
+    sessionId = '';
     startedWith: string | undefined;
     startedWithPersona: string | undefined;
     startedWithHandoffNote: string | undefined;
@@ -75,6 +80,9 @@ vi.mock('../src/employee.js', () => {
     );
 
     emit(event: EmployeeEvent): void {
+      // Mirrors real ClaudeEmployee.handle(): sessionId is set from the
+      // session's own 'ready' report, same moment the host is told about it.
+      if (event.kind === 'ready') this.sessionId = event.sessionId;
       this.onEvent(event);
     }
 
@@ -109,6 +117,16 @@ function usage(model: string): EmployeeEvent {
 function savedRoster(): SavedEmployee[] {
   const calls = vi.mocked(writeEmployees).mock.calls;
   return calls.length ? calls[calls.length - 1][0] : [];
+}
+
+/** Just enough of AgentRuntime for the ghost-readoption guard: dismiss the
+ *  transcript and unregister the sessionId. Real AgentRuntime has far more —
+ *  this is a partial stand-in, cast at the call site. */
+function mockRuntime(): {
+  dismissalTracker: { dismiss: ReturnType<typeof vi.fn> };
+  unregisterAgent: ReturnType<typeof vi.fn>;
+} {
+  return { dismissalTracker: { dismiss: vi.fn() }, unregisterAgent: vi.fn() };
 }
 
 describe('employees', () => {
@@ -175,6 +193,33 @@ describe('employees', () => {
           text: '모델 변경 실패: 세션이 응답하지 않음',
         });
       });
+    });
+  });
+
+  describe('fireEmployee', () => {
+    it('해임 시에도 트랜스크립트를 dismiss하고 unregisterAgent를 호출한다 (ghost-readoption 방지)', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      created[0].emit({ kind: 'ready', sessionId: 'sess-fire' });
+      const runtime = mockRuntime();
+
+      fireEmployee(store, 1, runtime as unknown as AgentRuntime);
+
+      const expectedPath = path.join(
+        os.homedir(),
+        '.claude',
+        'projects',
+        normalizeProjectPath('/work'),
+        'sess-fire.jsonl',
+      );
+      expect(runtime.dismissalTracker.dismiss).toHaveBeenCalledWith(expectedPath);
+      expect(runtime.unregisterAgent).toHaveBeenCalledWith('sess-fire');
+    });
+
+    it('runtime이 없으면(VS Code 미사용) 조용히 건너뛴다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      created[0].emit({ kind: 'ready', sessionId: 'sess-fire2' });
+
+      expect(() => fireEmployee(store, 1)).not.toThrow();
     });
   });
 
@@ -423,6 +468,26 @@ describe('employees', () => {
           employees: [expect.objectContaining({ agentId: 1, duty: 'off' })],
         }),
       );
+    });
+
+    it('퇴근 완료 시 트랜스크립트를 dismiss하고 unregisterAgent를 호출한다 (ghost-readoption 방지)', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      created[0].emit({ kind: 'ready', sessionId: 'sess-clockout' });
+      const runtime = mockRuntime();
+
+      clockOut(store, 1, runtime as unknown as AgentRuntime);
+      created[0].emit({ kind: 'text', text: '요약 내용' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const expectedPath = path.join(
+        os.homedir(),
+        '.claude',
+        'projects',
+        normalizeProjectPath(tmpCwd),
+        'sess-clockout.jsonl',
+      );
+      expect(runtime.dismissalTracker.dismiss).toHaveBeenCalledWith(expectedPath);
+      expect(runtime.unregisterAgent).toHaveBeenCalledWith('sess-clockout');
     });
 
     it('요약 중 text 이벤트는 채팅창으로 broadcast되지 않는다', async () => {

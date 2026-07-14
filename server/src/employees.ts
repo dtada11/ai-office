@@ -13,9 +13,11 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import type { EmployeeDuty, EmployeeProvider, EmployeeRole } from '../../core/src/messages.js';
+import { normalizeProjectPath } from '../../core/src/normalizeProjectPath.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { resolveProvider } from './aiProvider.js';
@@ -221,7 +223,7 @@ function onEvent(
         // The turn that was in flight when clockOut() was called just finished —
         // safe now to start the handoff summary as its own, freshly-tracked turn.
         current.pendingClockOut = false;
-        startHandoffSummary(store, agentId);
+        startHandoffSummary(store, agentId, runtime);
       }
       break;
     }
@@ -249,7 +251,7 @@ function onEvent(
       if (current.duty === 'clockingOut') {
         // The session died before (or during) the handoff summary — clock out
         // anyway, without a note. Clocking out must never get stuck.
-        finishHandoff(store, agentId, null);
+        finishHandoff(store, agentId, null, runtime);
         break;
       }
       if (event.text) {
@@ -344,6 +346,39 @@ function delegationFor(store: AgentStateStore): Delegation {
   };
 }
 
+// ── External-scanner ghost-readoption guard ─────────────────────
+
+/** Where Claude would have written this employee's transcript, if the session
+ *  ever got far enough to report a sessionId. Employee characters are bound by
+ *  sessionId, not by watching this file (agent.jsonlFile is always '' for
+ *  them) — but the file still exists on disk, and the external-session
+ *  scanner (fileWatcher.ts) doesn't know that. */
+function transcriptPathFor(cwd: string, sessionId: string): string {
+  return path.join(
+    os.homedir(),
+    '.claude',
+    'projects',
+    normalizeProjectPath(cwd),
+    `${sessionId}.jsonl`,
+  );
+}
+
+/** Tell the external-session scanner to leave this employee's transcript
+ *  alone, right before we remove their character. dd21ed3's own-agent guard
+ *  (fileWatcher.ts scanExternalDir, matching agents.values()) only works
+ *  while the character is still in the store — once store.delete() runs, the
+ *  next scan tick sees an untracked, still-fresh .jsonl file and ghost-
+ *  readopts it as a brand-new external agent. Only matters when the
+ *  employee's cwd falls under a directory the scanner actually watches
+ *  (trackedProjectDirs) — which in practice means "the folder the server
+ *  itself was started in" — but dismissing unconditionally is harmless. */
+function dismissEmployeeSession(runtime: AgentRuntime | undefined, current: Staff): void {
+  const sessionId = current.employee?.sessionId;
+  if (!runtime || !sessionId) return;
+  runtime.dismissalTracker.dismiss(transcriptPathFor(current.cwd, sessionId));
+  runtime.unregisterAgent(sessionId);
+}
+
 // ── Handoff notes (clock-out summaries) ─────────────────────────
 
 function getHandoffDir(cwd: string): string {
@@ -430,19 +465,23 @@ function writeHandoffNote(name: string, cwd: string, note: string): void {
 /** Starts the handoff summary as its own turn — called either immediately by
  *  clockOut() (employee was idle) or from onEvent's result handler once an
  *  in-flight turn finishes (employee was mid-turn). */
-function startHandoffSummary(store: AgentStateStore, agentId: number): void {
+function startHandoffSummary(
+  store: AgentStateStore,
+  agentId: number,
+  runtime: AgentRuntime | undefined,
+): void {
   const current = staff.get(agentId);
   if (!current?.employee) return;
 
   const timer = setTimeout(() => {
-    finishHandoff(store, agentId, null);
+    finishHandoff(store, agentId, null, runtime);
   }, HANDOFF_SUMMARY_TIMEOUT_MS);
 
   current.handoff = {
     answer: '',
     resolve: (text) => {
       clearTimeout(timer);
-      finishHandoff(store, agentId, text || null);
+      finishHandoff(store, agentId, text || null, runtime);
     },
   };
   // Sent directly (not sendToEmployee) — the user never asked for this, so it
@@ -455,7 +494,12 @@ function startHandoffSummary(store: AgentStateStore, agentId: number): void {
  *  without removing it — called from the handoff resolving normally, the
  *  summary timing out, or the session dying mid-summary. Idempotent, so any of
  *  those racing is harmless. */
-function finishHandoff(store: AgentStateStore, agentId: number, note: string | null): void {
+function finishHandoff(
+  store: AgentStateStore,
+  agentId: number,
+  note: string | null,
+  runtime: AgentRuntime | undefined,
+): void {
   const current = staff.get(agentId);
   if (!current || current.duty === 'off') return;
 
@@ -473,6 +517,10 @@ function finishHandoff(store: AgentStateStore, agentId: number, note: string | n
     });
   }
 
+  // Before the character disappears — otherwise the external scanner
+  // ghost-readopts the now-untracked transcript on its next tick.
+  dismissEmployeeSession(runtime, current);
+
   current.employee?.stop();
   current.employee = undefined;
   current.duty = 'off';
@@ -485,7 +533,7 @@ function finishHandoff(store: AgentStateStore, agentId: number, note: string | n
  *  (waiting for any turn already in flight to finish first, so it is not
  *  mistaken for that turn's own result), then their session closes. They stay
  *  on the roster, off duty, until clocked back in. */
-export function clockOut(store: AgentStateStore, agentId: number): void {
+export function clockOut(store: AgentStateStore, agentId: number, runtime?: AgentRuntime): void {
   const current = staff.get(agentId);
   if (!current || current.duty !== 'on' || !current.employee) return;
 
@@ -496,7 +544,7 @@ export function clockOut(store: AgentStateStore, agentId: number): void {
     current.pendingClockOut = true;
     return;
   }
-  startHandoffSummary(store, agentId);
+  startHandoffSummary(store, agentId, runtime);
 }
 
 /** Clock this employee back on: a fresh session, reading whatever handoff note
@@ -605,9 +653,16 @@ export async function hireEmployee(
   );
 }
 
-export function fireEmployee(store: AgentStateStore, agentId: number): void {
+export function fireEmployee(
+  store: AgentStateStore,
+  agentId: number,
+  runtime?: AgentRuntime,
+): void {
   const current = staff.get(agentId);
   if (!current) return;
+  // Same reasoning as finishHandoff(): before the character disappears, or the
+  // external scanner ghost-readopts the now-untracked transcript.
+  dismissEmployeeSession(runtime, current);
   current.employee?.stop();
   store.delete(agentId);
   staff.delete(agentId);

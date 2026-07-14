@@ -161,7 +161,7 @@ export function handleClientMessage(
       break;
 
     case 'clockOut':
-      clockOut(store, msg.agentId as number);
+      clockOut(store, msg.agentId as number, runtime);
       break;
 
     case 'addExternalAssetDirectory': {
@@ -222,7 +222,7 @@ export function handleClientMessage(
     }
 
     case 'fireEmployee':
-      fireEmployee(store, msg.agentId as number);
+      fireEmployee(store, msg.agentId as number, runtime);
       break;
 
     case 'sendAgentMessage':
