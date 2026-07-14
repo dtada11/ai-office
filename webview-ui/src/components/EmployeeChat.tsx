@@ -45,7 +45,10 @@ const CATEGORY_BORDER: Record<ToolCategory, string> = {
 interface EmployeeChatProps {
   employee: EmployeeInfo;
   log: ChatEntry[];
-  permission?: PermissionRequest;
+  /** Requests waiting on the user, oldest first. Only the front one is shown —
+   *  showing all at once would eat the whole window when several stack up
+   *  from a parallel tool call. */
+  permissions: PermissionRequest[];
   /** Whether the employee's turn is still in progress. */
   busy: boolean;
   /** What they're doing right now, while busy. */
@@ -59,7 +62,7 @@ interface EmployeeChatProps {
   /** Bring this window to the front — it is the one being worked in. */
   onFocus: () => void;
   onClose: () => void;
-  onDecided: () => void;
+  onDecided: (requestId: string) => void;
   /** A message was just sent — lets the caller mark the employee busy right away. */
   onSend: () => void;
 }
@@ -211,7 +214,7 @@ function ResultEntry({ text, spacing }: { text: string; spacing: string }) {
 export function EmployeeChat({
   employee,
   log,
-  permission,
+  permissions,
   busy,
   busyLabel,
   position,
@@ -243,6 +246,10 @@ export function EmployeeChat({
   const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Only the oldest request is shown; the rest wait behind it (I-2).
+  const permission = permissions[0];
+  const queuedAfter = permissions.length - 1;
 
   const scrollToBottom = () => {
     const el = logRef.current;
@@ -369,7 +376,7 @@ export function EmployeeChat({
       requestId: permission.requestId,
       allow,
     });
-    onDecided();
+    onDecided(permission.requestId);
   };
 
   const editDiff = permission ? editDiffFields(permission.toolName, permission.input) : undefined;
@@ -485,10 +492,24 @@ export function EmployeeChat({
       </div>
 
       {permission && (
-        <div className="border-2 border-accent-bright rounded-none p-6 flex flex-col gap-4">
-          <span className="text-xs">
-            {permission.title || `${employee.name}이(가) ${permission.toolName} 사용을 요청합니다`}
-          </span>
+        <div
+          className="border-2 border-accent-bright rounded-none p-6 flex flex-col gap-4"
+          data-testid="permission-card"
+        >
+          <div className="flex items-start justify-between gap-8">
+            <span className="text-xs">
+              {permission.title ||
+                `${employee.name}이(가) ${permission.toolName} 사용을 요청합니다`}
+            </span>
+            {queuedAfter > 0 && (
+              <span
+                className="shrink-0 text-2xs text-text-muted whitespace-nowrap"
+                data-testid="permission-queue-count"
+              >
+                대기 {queuedAfter}건
+              </span>
+            )}
+          </div>
           <span className="text-2xs text-text-muted font-mono break-words">
             {summarizeToolCall(permission.toolName, permission.input)}
           </span>

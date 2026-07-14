@@ -16,6 +16,8 @@ import type { OfficeLayout, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { isE2E } from '../runtime.js';
 import { transport } from '../transport/index.js';
+import type { PermissionRequest } from './permissionQueue.js';
+import { dequeuePermission, enqueuePermission } from './permissionQueue.js';
 
 export interface SubagentCharacter {
   id: number;
@@ -80,10 +82,12 @@ interface ExtensionMessageState {
   employees: EmployeeInfo[];
   /** Transcript per employee. */
   chatLogs: Record<number, ChatEntry[]>;
-  /** The tool call each employee is waiting on approval for, if any. */
-  permissions: Record<number, PermissionRequest | undefined>;
-  /** Clear an employee's pending request once the user has answered it. */
-  clearPermission: (agentId: number) => void;
+  /** The tool calls each employee is waiting on approval for, oldest first.
+   *  Empty array (never undefined) when nothing is pending — consumers don't
+   *  need to guard with `?.length`. */
+  permissions: Record<number, PermissionRequest[]>;
+  /** Clear one of an employee's pending requests once the user has answered it. */
+  clearPermission: (agentId: number, requestId: string) => void;
   /** Whether each employee's turn is still in progress. */
   busy: Record<number, boolean>;
   /** What they're doing right now, while busy. */
@@ -132,12 +136,7 @@ export interface ChatEntry {
   input?: string;
 }
 
-export interface PermissionRequest {
-  requestId: string;
-  toolName: string;
-  title: string;
-  input: string;
-}
+export type { PermissionRequest };
 
 export interface AgentTokenInfo {
   inputTokens: number;
@@ -196,7 +195,7 @@ export function useExtensionMessages(
   const [officeProvider, setOfficeProvider] = useState<OfficeProviderInfo | null>(null);
   const [employees, setEmployees] = useState<EmployeeInfo[]>([]);
   const [chatLogs, setChatLogs] = useState<Record<number, ChatEntry[]>>({});
-  const [permissions, setPermissions] = useState<Record<number, PermissionRequest | undefined>>({});
+  const [permissions, setPermissions] = useState<Record<number, PermissionRequest[]>>({});
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [busyLabel, setBusyLabel] = useState<Record<number, string>>({});
 
@@ -325,6 +324,12 @@ export function useExtensionMessages(
           return next;
         });
         setSubagentTools((prev) => {
+          if (!(id in prev)) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setPermissions((prev) => {
           if (!(id in prev)) return prev;
           const next = { ...prev };
           delete next[id];
@@ -713,28 +718,32 @@ export function useExtensionMessages(
         });
       } else if (msg.type === 'agentPermissionRequest') {
         const agentId = msg.agentId as number;
+        const requestId = msg.requestId as string;
         setPermissions((prev) => ({
           ...prev,
-          [agentId]: {
-            requestId: msg.requestId as string,
+          [agentId]: enqueuePermission(prev[agentId] ?? [], {
+            requestId,
             toolName: msg.toolName as string,
             title: msg.title as string,
             input: msg.input as string,
-          },
+          }),
         }));
         // The bubble is the inbox: with every chat window closed, it is the only
-        // thing that says who is waiting on the user.
+        // thing that says who is waiting on the user. It must stay up as long as
+        // anything is queued, not just the one currently shown.
         os.showPermissionBubble(agentId);
         playPermissionSound();
       } else if (msg.type === 'agentPermissionResolved') {
         const agentId = msg.agentId as number;
         const requestId = msg.requestId as string;
-        // Only the request we are actually showing — a late resolve for an old one
-        // must not wipe the card for the request that replaced it.
-        setPermissions((prev) =>
-          prev[agentId]?.requestId === requestId ? { ...prev, [agentId]: undefined } : prev,
-        );
-        os.clearPermissionBubble(agentId);
+        setPermissions((prev) => {
+          const queue = prev[agentId];
+          if (!queue) return prev;
+          const next = dequeuePermission(queue, requestId);
+          if (next === queue) return prev; // already removed (optimistic clear beat us here)
+          if (next.length === 0) os.clearPermissionBubble(agentId);
+          return { ...prev, [agentId]: next };
+        });
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -752,9 +761,22 @@ export function useExtensionMessages(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getOfficeState]);
 
-  const clearPermission = useCallback((agentId: number) => {
-    setPermissions((prev) => ({ ...prev, [agentId]: undefined }));
-  }, []);
+  const clearPermission = useCallback(
+    (agentId: number, requestId: string) => {
+      // Optimistic: fires right after the decision is sent, ahead of the
+      // server's agentPermissionResolved round-trip, so the card advances to
+      // the next queued request (or closes) without waiting on the network.
+      setPermissions((prev) => {
+        const queue = prev[agentId];
+        if (!queue) return prev;
+        const next = dequeuePermission(queue, requestId);
+        if (next === queue) return prev;
+        if (next.length === 0) getOfficeState().clearPermissionBubble(agentId);
+        return { ...prev, [agentId]: next };
+      });
+    },
+    [getOfficeState],
+  );
 
   const markSending = useCallback((agentId: number) => {
     setBusy((prev) => ({ ...prev, [agentId]: true }));

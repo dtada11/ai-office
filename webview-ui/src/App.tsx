@@ -469,7 +469,7 @@ function App() {
               key={employee.agentId}
               employee={employee}
               log={chatLogs[employee.agentId] ?? []}
-              permission={permissions[employee.agentId]}
+              permissions={permissions[employee.agentId] ?? []}
               busy={busy[employee.agentId] ?? false}
               busyLabel={busyLabel[employee.agentId] ?? ''}
               position={chatPositions[employee.agentId] ?? initialChatPosition(0)}
@@ -478,7 +478,7 @@ function App() {
               onResize={(size) => handleChatResize(employee.agentId, size)}
               onFocus={() => handleChatFocus(employee.agentId)}
               onClose={() => setOpenChats((prev) => prev.filter((id) => id !== employee.agentId))}
-              onDecided={() => clearPermission(employee.agentId)}
+              onDecided={(requestId) => clearPermission(employee.agentId, requestId)}
               onSend={() => markSending(employee.agentId)}
             />
           ))}
