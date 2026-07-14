@@ -1113,10 +1113,15 @@ export function scanExternalDir(
     // Check if already tracked by an agent (normalize paths for comparison).
     // This prevents the external scanner from adopting /clear files (already
     // reassigned to a terminal agent) while allowing untracked files through.
+    // The session id is the file name. An employee's character is bound by session
+    // id and never by file (we hire them, we don't find them on disk), so matching
+    // on jsonlFile alone leaves their transcript looking unowned — and the scanner
+    // adopts it as a second character for the same session.
     const normalizedFile = path.resolve(file);
+    const fileSessionId = path.basename(file, '.jsonl');
     let tracked = false;
     for (const agent of agents.values()) {
-      if (path.resolve(agent.jsonlFile) === normalizedFile) {
+      if (path.resolve(agent.jsonlFile) === normalizedFile || agent.sessionId === fileSessionId) {
         tracked = true;
         break;
       }

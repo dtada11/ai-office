@@ -262,6 +262,17 @@ export class HookEventHandler {
       return;
     }
 
+    // An employee's SessionStart lands before the SDK reports the session id back to
+    // us, so the session is filed as "pending external" before its character is
+    // registered. By the time the next event arrives the owner is known — confirming
+    // the pending one here would put a second character on the same session.
+    if (
+      this.sessionRouter.hasPending(event.session_id) &&
+      this.sessionRouter.resolve(event.session_id) !== undefined
+    ) {
+      this.sessionRouter.discardPending(event.session_id);
+    }
+
     // If a confirmation event arrives for a pending external session, create the agent first
     const pending = this.sessionRouter.confirmPending(event.session_id);
     if (pending) {

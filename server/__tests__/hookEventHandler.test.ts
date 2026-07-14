@@ -345,6 +345,36 @@ describe('HookEventHandler', () => {
     expect(agent.hookDelivered).toBe(true);
   });
 
+  it('does not adopt an employee session that was pending before its character registered', () => {
+    // An employee's SessionStart lands before the SDK reports the session id back, so
+    // the session is filed as pending external. Once the character claims it, the next
+    // event must route to that character — not spawn a second one on the same session.
+    const onExternalSessionDetected = vi.fn();
+    handler.setLifecycleCallbacks({ onExternalSessionDetected });
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'SessionStart',
+      session_id: 'emp-sess',
+      source: 'startup',
+      transcript_path: '/projects/test/emp-sess.jsonl',
+      cwd: '/projects/test',
+    });
+
+    const agent = createTestAgent({ id: 1, isExternal: false } as Partial<AgentState>);
+    agents.set(1, agent);
+    handler.registerAgent('emp-sess', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'PreToolUse',
+      session_id: 'emp-sess',
+      tool_name: 'Write',
+      tool_input: { file_path: '/tmp/x' },
+    });
+
+    expect(onExternalSessionDetected).not.toHaveBeenCalled();
+    expect(agent.hookDelivered).toBe(true);
+  });
+
   it('SessionStart(source=clear) reassigns agent with pendingClear', () => {
     const agent = createTestAgent({
       id: 1,
