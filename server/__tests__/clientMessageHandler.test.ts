@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
 import type { ClientMessageContext } from '../src/clientMessageHandler.js';
@@ -30,7 +30,17 @@ function context(): ClientMessageContext {
   return { store: new AgentStateStore(), cache: null };
 }
 
+/** hireEmployee(store, name, cwd, role, model, ...) — only the model arg (index 4)
+ *  matters for this suite; the rest is exercised elsewhere (employees.test.ts). */
+function modelArgOf(call: number): unknown {
+  return vi.mocked(hireEmployee).mock.calls[call][4];
+}
+
 describe('handleClientMessage: hireEmployee', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('msg.model이 있으면 그 모델로 고용한다', () => {
     handleClientMessage(
       { type: 'hireEmployee', name: '코더', cwd: '/work', role: 'staff', model: 'claude-opus-4-8' },
@@ -38,17 +48,7 @@ describe('handleClientMessage: hireEmployee', () => {
       context(),
     );
 
-    expect(vi.mocked(hireEmployee)).toHaveBeenCalledWith(
-      expect.anything(),
-      '코더',
-      '/work',
-      'staff',
-      'claude-opus-4-8',
-      expect.anything(),
-      undefined,
-      undefined,
-      undefined,
-    );
+    expect(modelArgOf(0)).toBe('claude-opus-4-8');
   });
 
   it('msg.model이 없으면 사무실 기본 모델로 떨어진다', () => {
@@ -58,17 +58,7 @@ describe('handleClientMessage: hireEmployee', () => {
       context(),
     );
 
-    expect(vi.mocked(hireEmployee)).toHaveBeenCalledWith(
-      expect.anything(),
-      '코더',
-      '/work',
-      'staff',
-      'office-default-model',
-      expect.anything(),
-      undefined,
-      undefined,
-      undefined,
-    );
+    expect(modelArgOf(0)).toBe('office-default-model');
   });
 
   it('msg.model이 빈 문자열이면 사무실 기본 모델로 떨어진다', () => {
@@ -78,16 +68,6 @@ describe('handleClientMessage: hireEmployee', () => {
       context(),
     );
 
-    expect(vi.mocked(hireEmployee)).toHaveBeenCalledWith(
-      expect.anything(),
-      '코더',
-      '/work',
-      'staff',
-      'office-default-model',
-      expect.anything(),
-      undefined,
-      undefined,
-      undefined,
-    );
+    expect(modelArgOf(0)).toBe('office-default-model');
   });
 });
