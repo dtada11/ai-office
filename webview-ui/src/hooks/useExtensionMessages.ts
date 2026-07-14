@@ -683,7 +683,7 @@ export function useExtensionMessages(
             ...prev,
             [agentId]: text === 'mcp__office__delegate' ? '위임 중' : text,
           }));
-        } else if (kind === 'result' || kind === 'ended') {
+        } else if (kind === 'result') {
           setBusy((prev) => ({ ...prev, [agentId]: false }));
         }
         if (!text && kind === 'result') return; // a clean turn ends silently
