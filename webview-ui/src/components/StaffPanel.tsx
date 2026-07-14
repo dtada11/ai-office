@@ -19,6 +19,15 @@ interface StaffPanelProps {
   onOpenPersona: (agentId: number) => void;
 }
 
+type StaffTabId = 'roster' | 'hire';
+
+/** Adding a tab later is one entry here (plus its content block below) — no
+ *  router or tab-context library, there are only ever a couple of these. */
+const STAFF_TABS: { id: StaffTabId; label: string }[] = [
+  { id: 'roster', label: '직원 목록' },
+  { id: 'hire', label: '새 직원 고용' },
+];
+
 /** What an employee's row says they run on. */
 const MODE_LABEL: Record<string, string> = {
   subscription: '구독',
@@ -170,6 +179,7 @@ export function StaffPanel({
   const [isVp, setIsVp] = useState(false);
   const [mode, setMode] = useState<PickedMode>('office');
   const [secret, setSecret] = useState('');
+  const [activeTab, setActiveTab] = useState<StaffTabId>('roster');
 
   // Which employee's title is being edited inline, and the draft text for it.
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
@@ -232,9 +242,22 @@ export function StaffPanel({
         </Button>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <span className="text-xs text-text-muted">직원 목록 · {employees.length}명</span>
-        {employees.length === 0 ? (
+      <div className="flex items-center gap-4 border-b-2 border-border pb-6">
+        {STAFF_TABS.map((tab) => (
+          <Button
+            key={tab.id}
+            variant={activeTab === tab.id ? 'active' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab(tab.id)}
+            data-testid={`staff-tab-${tab.id}`}
+          >
+            {tab.id === 'roster' ? `${tab.label} (${employees.length})` : tab.label}
+          </Button>
+        ))}
+      </div>
+
+      {activeTab === 'roster' &&
+        (employees.length === 0 ? (
           <span className="text-xs text-text-muted">아직 직원이 없습니다.</span>
         ) : (
           <div className="flex flex-col gap-4">
@@ -252,12 +275,10 @@ export function StaffPanel({
               />
             ))}
           </div>
-        )}
-      </div>
+        ))}
 
-      <div className="flex flex-col gap-4 border-t-2 border-border pt-6">
-        <span className="text-xs text-text-muted">새 직원 고용</span>
-        <div className="flex flex-col gap-4 border-2 border-border bg-bg-dark p-6">
+      {activeTab === 'hire' && (
+        <div className="flex flex-col gap-4">
           <input
             className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
             value={name}
@@ -323,7 +344,7 @@ export function StaffPanel({
             고용
           </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
