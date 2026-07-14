@@ -269,7 +269,13 @@ export const claudeProvider: HookProvider = {
   areHooksInstalled,
 
   formatToolStatus,
-  permissionExemptTools: new Set(['Task', 'Agent', 'AskUserQuestion']),
+  permissionExemptTools: new Set([
+    'Task',
+    'Agent',
+    'AskUserQuestion',
+    'mcp__office__delegate',
+    'mcp__office__list_staff',
+  ]),
   subagentToolNames: new Set(['Task', 'Agent']),
   readingTools: new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']),
   terminalNamePrefix: CLAUDE_TERMINAL_NAME_PREFIX,

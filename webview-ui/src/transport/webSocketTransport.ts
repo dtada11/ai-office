@@ -9,11 +9,15 @@ import type { MessageTransport } from './types.js';
 export class WebSocketTransport implements MessageTransport {
   private ws: WebSocket | null = null;
   private handlers: Array<(msg: ServerMessage) => void> = [];
+  private reconnectHandlers: Array<() => void> = [];
   private url: string;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private pendingMessages: ClientMessage[] = [];
+  /** False until the first successful connect — distinguishes the initial
+   *  connect (no one needs telling) from a reconnect (webviewReady must be resent). */
+  private hasConnectedBefore = false;
 
   constructor(url: string) {
     this.url = url;
@@ -32,6 +36,10 @@ export class WebSocketTransport implements MessageTransport {
         this.ws!.send(JSON.stringify(msg));
       }
       this.pendingMessages = [];
+      if (this.hasConnectedBefore) {
+        for (const handler of this.reconnectHandlers) handler();
+      }
+      this.hasConnectedBefore = true;
     };
 
     this.ws.onmessage = (e: MessageEvent) => {
@@ -70,6 +78,13 @@ export class WebSocketTransport implements MessageTransport {
     };
   }
 
+  onReconnect(handler: () => void): () => void {
+    this.reconnectHandlers.push(handler);
+    return () => {
+      this.reconnectHandlers = this.reconnectHandlers.filter((h) => h !== handler);
+    };
+  }
+
   dispose(): void {
     this.disposed = true;
     if (this.reconnectTimer) {
@@ -79,6 +94,7 @@ export class WebSocketTransport implements MessageTransport {
     this.ws?.close();
     this.ws = null;
     this.handlers = [];
+    this.reconnectHandlers = [];
     this.pendingMessages = [];
   }
 

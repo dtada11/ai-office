@@ -24,6 +24,10 @@ interface EmployeeChatProps {
   employee: EmployeeInfo;
   log: ChatEntry[];
   permission?: PermissionRequest;
+  /** Whether the employee's turn is still in progress. */
+  busy: boolean;
+  /** What they're doing right now, while busy. */
+  busyLabel: string;
   /** Where the window sits. Owned by App, so it survives closing and re-opening. */
   position: ChatPosition;
   onMove: (position: ChatPosition) => void;
@@ -31,17 +35,22 @@ interface EmployeeChatProps {
   onFocus: () => void;
   onClose: () => void;
   onDecided: () => void;
+  /** A message was just sent — lets the caller mark the employee busy right away. */
+  onSend: () => void;
 }
 
 export function EmployeeChat({
   employee,
   log,
   permission,
+  busy,
+  busyLabel,
   position,
   onMove,
   onFocus,
   onClose,
   onDecided,
+  onSend,
 }: EmployeeChatProps) {
   const [input, setInput] = useState('');
   const [isModelOpen, setIsModelOpen] = useState(false);
@@ -97,6 +106,7 @@ export function EmployeeChat({
     if (!text) return;
     transport.send({ type: 'sendAgentMessage', agentId: employee.agentId, text });
     setInput('');
+    onSend();
   };
 
   const selectModel = (model: string) => {
@@ -162,7 +172,7 @@ export function EmployeeChat({
 
       <div
         ref={logRef}
-        className="flex-1 overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 font-mono text-xs whitespace-pre-wrap break-all"
+        className="flex-1 min-h-0 overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 font-mono text-xs whitespace-pre-wrap break-all"
         data-testid="chat-log"
       >
         {log.length === 0 ? (
@@ -189,7 +199,9 @@ export function EmployeeChat({
           <span className="text-xs">
             {permission.title || `${employee.name}이(가) ${permission.toolName} 사용을 요청합니다`}
           </span>
-          <span className="font-mono text-xs text-text-muted break-all">{permission.input}</span>
+          <div className="font-mono text-xs text-text-muted break-all whitespace-pre-wrap max-h-[30vh] overflow-y-auto">
+            {permission.input}
+          </div>
           <div className="flex gap-4">
             <Button variant="default" size="sm" onClick={() => decide(true)}>
               허용
@@ -198,6 +210,16 @@ export function EmployeeChat({
               거부
             </Button>
           </div>
+        </div>
+      )}
+
+      {busy && !permission && (
+        <div className="flex items-center gap-4 text-xs text-text-muted" data-testid="chat-busy">
+          <span
+            className="w-6 h-6 rounded-full shrink-0 pixel-pulse"
+            style={{ background: 'var(--color-status-active)' }}
+          />
+          <span>{busyLabel || '생각하는 중'}…</span>
         </div>
       )}
 

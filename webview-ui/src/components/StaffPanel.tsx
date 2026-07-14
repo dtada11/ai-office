@@ -108,7 +108,7 @@ export function StaffPanel({ employees, officeProvider, isOpen, onClose }: Staff
   if (!isOpen) return null;
 
   return (
-    <div className="absolute bottom-60 left-10 z-30 pixel-panel p-8 flex flex-col gap-6 w-400">
+    <div className="absolute bottom-60 left-10 z-30 pixel-panel p-8 flex flex-col gap-6 w-400 max-h-[calc(100vh-80px)] overflow-y-auto">
       <div className="flex items-center justify-between gap-8">
         <span className="text-sm whitespace-nowrap">직원 관리</span>
         <Button variant="default" size="sm" onClick={onClose} title="닫기">

@@ -84,6 +84,12 @@ interface ExtensionMessageState {
   permissions: Record<number, PermissionRequest | undefined>;
   /** Clear an employee's pending request once the user has answered it. */
   clearPermission: (agentId: number) => void;
+  /** Whether each employee's turn is still in progress. */
+  busy: Record<number, boolean>;
+  /** What they're doing right now, while busy. */
+  busyLabel: Record<number, string>;
+  /** Mark an employee's turn as started, right when a message is sent (optimistic). */
+  markSending: (agentId: number) => void;
 }
 
 export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
@@ -185,6 +191,8 @@ export function useExtensionMessages(
   const [employees, setEmployees] = useState<EmployeeInfo[]>([]);
   const [chatLogs, setChatLogs] = useState<Record<number, ChatEntry[]>>({});
   const [permissions, setPermissions] = useState<Record<number, PermissionRequest | undefined>>({});
+  const [busy, setBusy] = useState<Record<number, boolean>>({});
+  const [busyLabel, setBusyLabel] = useState<Record<number, string>>({});
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -667,6 +675,17 @@ export function useExtensionMessages(
         const agentId = msg.agentId as number;
         const kind = msg.kind as ChatEntry['kind'];
         const text = msg.text as string;
+        // Busy tracking runs ahead of the early return below so a silent
+        // clean-turn result still clears the "처리 중" indicator.
+        if (kind === 'tool') {
+          setBusy((prev) => ({ ...prev, [agentId]: true }));
+          setBusyLabel((prev) => ({
+            ...prev,
+            [agentId]: text === 'mcp__office__delegate' ? '위임 중' : text,
+          }));
+        } else if (kind === 'result' || kind === 'ended') {
+          setBusy((prev) => ({ ...prev, [agentId]: false }));
+        }
         if (!text && kind === 'result') return; // a clean turn ends silently
         setChatLogs((prev) => {
           const log = prev[agentId] ?? [];
@@ -706,7 +725,16 @@ export function useExtensionMessages(
     };
     const unsubscribe = transport.onMessage(handler);
     transport.send({ type: 'webviewReady' });
-    return unsubscribe;
+    // A dropped-then-restored connection (network blip, sleep, server restart)
+    // otherwise leaves the server thinking this client already got its state —
+    // any permission requests it broadcast while we were gone are lost for good.
+    const unsubscribeReconnect = transport.onReconnect?.(() => {
+      transport.send({ type: 'webviewReady' });
+    });
+    return () => {
+      unsubscribe();
+      unsubscribeReconnect?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getOfficeState]);
 
@@ -714,11 +742,19 @@ export function useExtensionMessages(
     setPermissions((prev) => ({ ...prev, [agentId]: undefined }));
   }, []);
 
+  const markSending = useCallback((agentId: number) => {
+    setBusy((prev) => ({ ...prev, [agentId]: true }));
+    setBusyLabel((prev) => ({ ...prev, [agentId]: '생각하는 중' }));
+  }, []);
+
   return {
     employees,
     chatLogs,
     permissions,
     clearPermission,
+    busy,
+    busyLabel,
+    markSending,
     agents,
     selectedAgent,
     agentTools,

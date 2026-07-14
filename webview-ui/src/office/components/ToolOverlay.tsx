@@ -219,7 +219,7 @@ export function ToolOverlay({
               top: screenY - (hasExtraLines ? 34 : 28),
               pointerEvents: isSelected ? 'auto' : 'none',
               opacity: alwaysShowOverlay && !isSelected && !isHovered ? (isSub ? 0.5 : 0.75) : 1,
-              zIndex: isSelected ? 42 : 41,
+              zIndex: isSelected ? 6 : 5,
             }}
             data-testid="agent-overlay"
             data-agent-id={id}

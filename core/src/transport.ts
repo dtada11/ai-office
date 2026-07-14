@@ -12,6 +12,11 @@ export interface MessageTransport {
   send(message: ClientMessage): void;
   /** Subscribe to messages from the extension/server. Returns unsubscribe function. */
   onMessage(handler: (message: ServerMessage) => void): () => void;
+  /** Subscribe to reconnection events (a connection that dropped and came back).
+   *  Optional: transports with no notion of disconnect (e.g. VS Code's webview
+   *  postMessage, always treated as connected) need not implement this. Returns
+   *  unsubscribe function. */
+  onReconnect?(handler: () => void): () => void;
   /** Clean up resources (WebSocket close, etc.). */
   dispose(): void;
 }

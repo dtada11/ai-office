@@ -93,6 +93,9 @@ function App() {
     chatLogs,
     permissions,
     clearPermission,
+    busy,
+    busyLabel,
+    markSending,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   /** Chat windows the user has open. Render order IS stacking order, so the last
@@ -401,11 +404,14 @@ function App() {
               employee={employee}
               log={chatLogs[employee.agentId] ?? []}
               permission={permissions[employee.agentId]}
+              busy={busy[employee.agentId] ?? false}
+              busyLabel={busyLabel[employee.agentId] ?? ''}
               position={chatPositions[employee.agentId] ?? initialChatPosition(0)}
               onMove={(position) => handleChatMove(employee.agentId, position)}
               onFocus={() => handleChatFocus(employee.agentId)}
               onClose={() => setOpenChats((prev) => prev.filter((id) => id !== employee.agentId))}
               onDecided={() => clearPermission(employee.agentId)}
+              onSend={() => markSending(employee.agentId)}
             />
           ))}
 
