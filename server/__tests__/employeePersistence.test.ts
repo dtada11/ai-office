@@ -84,6 +84,34 @@ describe('employeePersistence', () => {
     });
   });
 
+  describe('readEmployees normalizes legacy roles', () => {
+    it('낡은 role:"vp" 로스터를 읽으면 "lead"로 흡수한다', () => {
+      writeRoster([{ name: '기획', cwd: '/plan', role: 'vp' }]);
+
+      const [employee] = readEmployees();
+
+      expect(employee.role).toBe('lead');
+    });
+
+    it('알 수 없는 role은 staff로 떨어진다', () => {
+      writeRoster([{ name: '코더', cwd: '/work', role: 'unknown-role' }]);
+
+      const [employee] = readEmployees();
+
+      expect(employee.role).toBe('staff');
+    });
+
+    it('다음 저장 때 vp가 파일에서 사라진다', () => {
+      const rosterPath = writeRoster([{ name: '기획', cwd: '/plan', role: 'vp' }]);
+
+      writeEmployees(readEmployees());
+
+      const onDisk = fs.readFileSync(rosterPath, 'utf8');
+      expect(onDisk).not.toContain('"vp"');
+      expect(JSON.parse(onDisk).employees[0].role).toBe('lead');
+    });
+  });
+
   describe('palette/hueShift round-trip', () => {
     it('보존한다: 저장한 palette/hueShift가 그대로 읽힌다', () => {
       writeEmployees([{ name: '코더', cwd: '/work', role: 'staff', palette: 2, hueShift: 90 }]);

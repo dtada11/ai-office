@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeProjectPath } from '../../core/src/normalizeProjectPath.js';
 import type { AgentRuntime } from '../src/agentRuntime.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
-import type { EmployeeEvent, PermissionAsk } from '../src/employee.js';
+import type { Delegation, EmployeeEvent, PermissionAsk } from '../src/employee.js';
 import type { SavedEmployee } from '../src/employeePersistence.js';
 import { readEmployees, writeEmployees } from '../src/employeePersistence.js';
 import {
@@ -32,6 +32,7 @@ interface FakeEmployee {
   startedWith: string | undefined;
   startedWithPersona: string | undefined;
   startedWithHandoffNote: string | undefined;
+  startedWithDelegation: Delegation | undefined;
   start: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
@@ -48,6 +49,7 @@ vi.mock('../src/employee.js', () => {
     startedWith: string | undefined;
     startedWithPersona: string | undefined;
     startedWithHandoffNote: string | undefined;
+    startedWithDelegation: Delegation | undefined;
     setModel = vi.fn(async (_model: string) => {});
     send = vi.fn();
     stop = vi.fn();
@@ -70,11 +72,12 @@ vi.mock('../src/employee.js', () => {
     start = vi.fn(
       async (
         model?: string,
-        _delegation?: unknown,
+        delegation?: Delegation,
         persona?: string,
         handoffNote?: string,
       ): Promise<void> => {
         this.startedWith = model;
+        this.startedWithDelegation = delegation;
         this.startedWithPersona = persona;
         this.startedWithHandoffNote = handoffNote;
       },
@@ -480,7 +483,7 @@ describe('employees', () => {
     it('re-hires an employee on their own model, not the office default', async () => {
       vi.mocked(readEmployees).mockReturnValueOnce([
         { name: '코더', cwd: '/work', role: 'staff', model: HAIKU },
-        { name: '기획', cwd: '/plan', role: 'vp' },
+        { name: '기획', cwd: '/plan', role: 'lead' },
       ]);
 
       await rehireSavedEmployees(store, SONNET);
@@ -504,6 +507,20 @@ describe('employees', () => {
           employees: [expect.objectContaining({ roleLabel: 'PM', persona: '꼼꼼하게' })],
         }),
       );
+    });
+  });
+
+  describe('listStaff (라우팅 근거)', () => {
+    it('직함이 있으면 포함하고, 없으면 이름과 폴더만 보여준다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET, undefined, undefined, '개발자');
+      await hireEmployee(store, '무직함', '/no-label', 'staff', SONNET);
+
+      const delegation = created[0].startedWithDelegation;
+      const result = delegation?.listStaff();
+
+      expect(result).toContain('- 코더 / 개발자 (담당 폴더: /work)');
+      expect(result).toContain('- 무직함 (담당 폴더: /no-label)');
     });
   });
 

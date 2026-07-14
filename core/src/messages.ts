@@ -250,7 +250,7 @@ export interface EmployeeInfo {
   costUsd?: number;
 }
 
-export type EmployeeRole = 'vp' | 'staff';
+export type EmployeeRole = 'lead' | 'staff';
 
 export type EmployeeDuty = 'on' | 'clockingOut' | 'off';
 
@@ -500,6 +500,7 @@ export interface HireEmployee {
   roleLabel?: string;
   persona?: string;
   provider?: EmployeeProvider;
+  model?: string;
 }
 
 export interface EmployeeProvider {

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
 import type { EmployeeInfo, OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
+import { applyJobPreset, JOB_PRESETS } from '../jobPresets.js';
+import { MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
 import { type PickedMode, ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
@@ -100,7 +102,7 @@ function EmployeeRow({
                   if (ev.key === 'Enter') onSaveLabel();
                   if (ev.key === 'Escape') onCancelEditingLabel();
                 }}
-                placeholder={e.role === 'vp' ? '부사장' : '팀원'}
+                placeholder={e.role === 'lead' ? '팀장' : '팀원'}
                 autoFocus
               />
               <Button variant="ghost" size="icon" onClick={onSaveLabel} title="저장">
@@ -110,7 +112,7 @@ function EmployeeRow({
           ) : (
             <>
               <span className="font-normal text-text-muted">
-                ({e.roleLabel || (e.role === 'vp' ? '부사장' : '팀원')})
+                ({e.roleLabel || (e.role === 'lead' ? '팀장' : '팀원')})
               </span>
               <Button variant="ghost" size="icon" onClick={onStartEditingLabel} title="직함 수정">
                 ✎
@@ -173,9 +175,11 @@ export function StaffPanel({
 }: StaffPanelProps) {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
+  const [jobId, setJobId] = useState('');
   const [roleLabel, setRoleLabel] = useState('');
   const [persona, setPersona] = useState('');
-  const [isVp, setIsVp] = useState(false);
+  const [hireModel, setHireModel] = useState('');
+  const [isLead, setIsLead] = useState(false);
   const [mode, setMode] = useState<PickedMode>('office');
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<StaffTabId>('roster');
@@ -184,8 +188,20 @@ export function StaffPanel({
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
 
-  // Only the VP may delegate, so there is only ever one of them.
-  const hasVp = employees.some((e) => e.role === 'vp');
+  // Only the lead may delegate, so there is only ever one of them.
+  const hasLead = employees.some((e) => e.role === 'lead');
+
+  // Picking a job overwrites the title/instructions/model drafts with that
+  // preset's values — simple, not merged. The user can still edit any of them
+  // by hand afterward; picking a job again overwrites again.
+  const handleJobChange = (id: string) => {
+    setJobId(id);
+    const fields = applyJobPreset(id);
+    if (!fields) return;
+    setRoleLabel(fields.roleLabel);
+    setPersona(fields.persona);
+    setHireModel(fields.model);
+  };
 
   const hire = () => {
     if (!name.trim() || !cwd.trim()) return;
@@ -204,16 +220,19 @@ export function StaffPanel({
       type: 'hireEmployee',
       name: name.trim(),
       cwd: cwd.trim(),
-      role: isVp && !hasVp ? 'vp' : 'staff',
+      role: isLead && !hasLead ? 'lead' : 'staff',
       ...(provider ? { provider } : {}),
       ...(roleLabel.trim() ? { roleLabel: roleLabel.trim() } : {}),
       ...(persona.trim() ? { persona: persona.trim() } : {}),
+      ...(hireModel ? { model: hireModel } : {}),
     });
     setName('');
     setCwd('');
+    setJobId('');
     setRoleLabel('');
     setPersona('');
-    setIsVp(false);
+    setHireModel('');
+    setIsLead(false);
     setMode('office');
     setSecret('');
   };
@@ -293,6 +312,20 @@ export function StaffPanel({
             placeholder="담당 폴더 (예: F:\Projects\ai-office)"
             data-testid="hire-cwd"
           />
+          <select
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={jobId}
+            onChange={(e) => handleJobChange(e.target.value)}
+            title="직무를 고르면 아래 직함·지침·모델이 채워집니다. 고른 뒤에도 자유롭게 고칠 수 있습니다."
+            data-testid="hire-job"
+          >
+            <option value="">직무 선택 안 함</option>
+            {JOB_PRESETS.map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.label}
+              </option>
+            ))}
+          </select>
           <input
             className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
             value={roleLabel}
@@ -300,7 +333,7 @@ export function StaffPanel({
             onKeyDown={(e) => {
               if (e.key === 'Enter') hire();
             }}
-            placeholder="직함 (비우면 기본값: 부사장/팀원)"
+            placeholder="직함 (비우면 기본값: 팀장/팀원)"
             data-testid="hire-role-label"
           />
           <textarea
@@ -311,15 +344,29 @@ export function StaffPanel({
             placeholder="이 직원의 역할·성격·주의사항을 적어주세요 (선택)"
             data-testid="hire-persona"
           />
-          {!hasVp && (
+          <select
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={hireModel}
+            onChange={(e) => setHireModel(e.target.value)}
+            title="이 모델로 고용됩니다. 비우면 사무실 기본 모델을 씁니다."
+            data-testid="hire-model"
+          >
+            <option value="">모델 추천 없음</option>
+            {MODEL_OPTIONS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          {!hasLead && (
             <label className="flex items-center gap-4 text-xs cursor-pointer">
               <input
                 type="checkbox"
-                checked={isVp}
-                onChange={(e) => setIsVp(e.target.checked)}
-                data-testid="hire-vp"
+                checked={isLead}
+                onChange={(e) => setIsLead(e.target.checked)}
+                data-testid="hire-lead"
               />
-              부사장으로 (팀원에게 일을 시킬 수 있음)
+              팀장으로 (팀원에게 일을 시킬 수 있음)
             </label>
           )}
 

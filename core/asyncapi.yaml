@@ -545,9 +545,9 @@ components:
     EmployeeRole:
       type: string
       description: |
-        vp = the user's own assistant, owns the top folder and is the only one
-        who may delegate. staff = owns one folder and does the work.
-      enum: [vp, staff]
+        lead = the only rank that may delegate. staff = owns one folder and
+        does the work.
+      enum: [lead, staff]
 
     EmployeeDuty:
       type: string
@@ -1141,6 +1141,11 @@ components:
             starts, so a change only reaches them on a re-hire.
         provider:
           $ref: '#/components/schemas/EmployeeProvider'
+        model:
+          type: string
+          description: |
+            The model to hire them on. Omitted = the office default at hire time.
+            A preset recommends one per job, but the user may override it.
 
     FireEmployee:
       description: End an employee's session and remove their character.

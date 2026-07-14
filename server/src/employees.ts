@@ -315,7 +315,9 @@ function delegationFor(store: AgentStateStore): Delegation {
     listStaff: () => {
       const team = [...staff.values()].filter((s) => s.role === 'staff');
       if (team.length === 0) return '팀원이 없습니다.';
-      return team.map((s) => `- ${s.name} (담당 폴더: ${s.cwd})`).join('\n');
+      return team
+        .map((s) => `- ${s.name}${s.roleLabel ? ` / ${s.roleLabel}` : ''} (담당 폴더: ${s.cwd})`)
+        .join('\n');
     },
 
     delegate: (name, instruction) =>
@@ -595,7 +597,7 @@ export async function clockIn(
 
   await employee.start(
     current.model || undefined,
-    current.role === 'vp' ? delegationFor(store) : undefined,
+    current.role === 'lead' ? delegationFor(store) : undefined,
     current.persona,
     note ?? undefined,
   );
@@ -665,7 +667,7 @@ export async function hireEmployee(
     palette,
     hueShift,
   });
-  await employee.start(model, role === 'vp' ? delegationFor(store) : undefined, persona);
+  await employee.start(model, role === 'lead' ? delegationFor(store) : undefined, persona);
   broadcastStaff(store);
   saveStaff();
   console.log(

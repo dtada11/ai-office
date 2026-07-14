@@ -19,8 +19,8 @@ function getRosterPath(): string {
 export interface SavedEmployee {
   name: string;
   cwd: string;
-  /** vp = the boss's assistant, the only one who may delegate. */
-  role: 'vp' | 'staff';
+  /** lead = the only rank that may delegate. */
+  role: 'lead' | 'staff';
   /** What to call them on screen. Absent = the default label for their role. */
   roleLabel?: string;
   /** Standing instructions, applied when the session starts. */
@@ -41,6 +41,13 @@ export interface SavedEmployee {
   hueShift?: number;
 }
 
+/** Legacy rosters say 'vp'. Anything unrecognized falls back to staff —
+ *  a wrong role is worse than a demotion. The dead value drops on next save. */
+function normalizeRole(raw: unknown): 'lead' | 'staff' {
+  if (raw === 'lead' || raw === 'vp') return 'lead';
+  return 'staff';
+}
+
 export function readEmployees(): SavedEmployee[] {
   try {
     const parsed = JSON.parse(fs.readFileSync(getRosterPath(), 'utf8')) as {
@@ -48,6 +55,7 @@ export function readEmployees(): SavedEmployee[] {
     };
     return (parsed.employees ?? []).map((e) => ({
       ...e,
+      role: normalizeRole(e.role),
       provider: normalizeProvider(e.provider),
     }));
   } catch {

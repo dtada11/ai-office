@@ -98,7 +98,7 @@ export interface EmployeeInfo {
   agentId: number;
   name: string;
   cwd: string;
-  role: 'vp' | 'staff';
+  role: 'lead' | 'staff';
   /** on = live session and character. clockingOut = writing a handoff note.
    *  off = no session, no character; still on the roster, dimmed. */
   duty: 'on' | 'clockingOut' | 'off';
