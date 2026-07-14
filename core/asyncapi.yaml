@@ -153,6 +153,8 @@ components:
         - $ref: '#/components/schemas/SetAgentModel'
         - $ref: '#/components/schemas/RenameEmployee'
         - $ref: '#/components/schemas/SetEmployeePersona'
+        - $ref: '#/components/schemas/ClockIn'
+        - $ref: '#/components/schemas/ClockOut'
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/RefreshPlanUsage'
         - $ref: '#/components/schemas/SetOfficeProvider'
@@ -537,6 +539,15 @@ components:
         who may delegate. staff = owns one folder and does the work.
       enum: [vp, staff]
 
+    EmployeeDuty:
+      type: string
+      description: |
+        on = has a live session, shows as a character in the office. clockingOut
+        = wrapping up a handoff note before the session closes (toggle disabled,
+        shown as "퇴근 중…"). off = no session, no character; still on the
+        roster, dimmed in the staff panel, until clocked back in.
+      enum: [on, clockingOut, off]
+
     AuthMode:
       type: string
       description: |
@@ -575,7 +586,7 @@ components:
     EmployeeInfo:
       type: object
       additionalProperties: false
-      required: [agentId, name, cwd, role]
+      required: [agentId, name, cwd, role, duty]
       properties:
         agentId:
           type: integer
@@ -587,6 +598,8 @@ components:
           description: The folder this employee is responsible for.
         role:
           $ref: '#/components/schemas/EmployeeRole'
+        duty:
+          $ref: '#/components/schemas/EmployeeDuty'
         roleLabel:
           type: string
           description: |
@@ -1186,6 +1199,34 @@ components:
           type: integer
         persona:
           type: string
+
+    ClockIn:
+      description: >-
+        Start this employee's session again. If they left a handoff note from
+        their last shift, it is read into context via a system-prompt append
+        (no turn is run — they only speak once the user does).
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: clockIn
+        agentId:
+          type: integer
+
+    ClockOut:
+      description: >-
+        End this employee's shift: they summarize their work into a handoff
+        note, then their session closes and their character leaves the
+        office. They stay on the roster, off duty, until clocked back in.
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: clockOut
+        agentId:
+          type: integer
 
     AgentPermissionDecision:
       description: Allow or deny a pending tool call, answering AgentPermissionRequest.

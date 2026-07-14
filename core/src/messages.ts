@@ -71,6 +71,8 @@ export type ClientMessage =
   | SetAgentModel
   | RenameEmployee
   | SetEmployeePersona
+  | ClockIn
+  | ClockOut
   | AgentPermissionDecision
   | RefreshPlanUsage
   | SetOfficeProvider;
@@ -235,6 +237,7 @@ export interface EmployeeInfo {
   name: string;
   cwd: string;
   role: EmployeeRole;
+  duty: EmployeeDuty;
   roleLabel?: string;
   persona?: string;
   model?: string;
@@ -246,6 +249,8 @@ export interface EmployeeInfo {
 }
 
 export type EmployeeRole = 'vp' | 'staff';
+
+export type EmployeeDuty = 'on' | 'clockingOut' | 'off';
 
 export type AuthMode = 'subscription' | 'oauthToken' | 'apiKey';
 
@@ -527,6 +532,16 @@ export interface SetEmployeePersona {
   type: 'setEmployeePersona';
   agentId: number;
   persona: string;
+}
+
+export interface ClockIn {
+  type: 'clockIn';
+  agentId: number;
+}
+
+export interface ClockOut {
+  type: 'clockOut';
+  agentId: number;
 }
 
 export interface AgentPermissionDecision {

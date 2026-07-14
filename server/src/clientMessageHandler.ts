@@ -6,6 +6,8 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import { getConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import {
+  clockIn,
+  clockOut,
   fireEmployee,
   getPendingPermissionRequests,
   hireEmployee,
@@ -150,6 +152,16 @@ export function handleClientMessage(
 
     case 'setEmployeePersona':
       setEmployeePersona(store, msg.agentId as number, msg.persona as string);
+      break;
+
+    case 'clockIn':
+      void clockIn(store, msg.agentId as number, runtime).catch((err) => {
+        console.error('[Pixel Agents] clock-in failed:', err);
+      });
+      break;
+
+    case 'clockOut':
+      clockOut(store, msg.agentId as number);
       break;
 
     case 'addExternalAssetDirectory': {

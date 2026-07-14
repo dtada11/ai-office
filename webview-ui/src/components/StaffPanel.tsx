@@ -107,7 +107,10 @@ export function StaffPanel({
       ) : (
         <div className="flex flex-col gap-4">
           {employees.map((e) => (
-            <div key={e.agentId} className="flex flex-col gap-4">
+            <div
+              key={e.agentId}
+              className={`flex flex-col gap-4 ${e.duty === 'off' ? 'text-text-muted' : ''}`}
+            >
               <div className="flex items-center justify-between gap-8">
                 <div className="flex flex-col">
                   <span className="text-xs flex items-center gap-4">
@@ -160,6 +163,22 @@ export function StaffPanel({
                 <div className="flex items-center gap-4">
                   <Button variant="default" size="sm" onClick={() => onOpenPersona(e.agentId)}>
                     지침 보기/수정
+                  </Button>
+                  <Button
+                    variant={
+                      e.duty === 'clockingOut' ? 'disabled' : e.duty === 'on' ? 'active' : 'default'
+                    }
+                    size="sm"
+                    disabled={e.duty === 'clockingOut'}
+                    onClick={() =>
+                      transport.send({
+                        type: e.duty === 'on' ? 'clockOut' : 'clockIn',
+                        agentId: e.agentId,
+                      })
+                    }
+                    title={e.duty === 'on' ? '업무를 남기고 퇴근' : '노트를 읽고 출근'}
+                  >
+                    {e.duty === 'clockingOut' ? '퇴근 중…' : e.duty === 'on' ? '퇴근' : '출근'}
                   </Button>
                   <Button
                     variant="default"

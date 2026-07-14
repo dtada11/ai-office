@@ -77,7 +77,12 @@ export interface Employee {
   readonly cwd: string;
   /** Set once the session reports it; the office keys its character off this. */
   readonly sessionId: string;
-  start(model?: string, delegation?: Delegation, persona?: string): Promise<void>;
+  start(
+    model?: string,
+    delegation?: Delegation,
+    persona?: string,
+    handoffNote?: string,
+  ): Promise<void>;
   send(text: string): void;
   setModel(model: string): Promise<void>;
   stop(): void;
@@ -101,17 +106,25 @@ export class ClaudeEmployee implements Employee {
     private readonly provider: EmployeeProvider,
   ) {}
 
-  async start(model?: string, delegation?: Delegation, persona?: string): Promise<void> {
+  async start(
+    model?: string,
+    delegation?: Delegation,
+    persona?: string,
+    handoffNote?: string,
+  ): Promise<void> {
     const input = createInputStream();
     const sdk = await importSdk();
     const { query } = sdk;
 
     // What this employee is told about themselves, on top of the stock prompt. A
-    // list because other blocks will join it later (a handover note, say) — they
-    // stack under the same append.
-    const promptBlocks = [persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null].filter(
-      (block): block is string => block !== null,
-    );
+    // list because other blocks join it under the same append — standing
+    // instructions, then (on a clock-in) the note they left themselves.
+    const promptBlocks = [
+      persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null,
+      handoffNote?.trim()
+        ? `## 인수인계 노트\n아래는 당신이 직전 근무를 마치며 남긴 인수인계 노트다. 이어서 업무를 진행하라.\n\n${handoffNote.trim()}`
+        : null,
+    ].filter((block): block is string => block !== null);
     const systemPrompt = promptBlocks.length
       ? {
           type: 'preset' as const,

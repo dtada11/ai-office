@@ -99,6 +99,9 @@ export interface EmployeeInfo {
   name: string;
   cwd: string;
   role: 'vp' | 'staff';
+  /** on = live session and character. clockingOut = writing a handoff note.
+   *  off = no session, no character; still on the roster, dimmed. */
+  duty: 'on' | 'clockingOut' | 'off';
   /** What to call them on screen. Absent = the default label for their role. */
   roleLabel?: string;
   /** Their standing instructions. Absent = none set. */

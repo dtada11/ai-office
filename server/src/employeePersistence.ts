@@ -29,6 +29,10 @@ export interface SavedEmployee {
   /** The AI this employee brings themselves. Absent = follow the office default,
    *  which is why it is only written for employees who actually override it. */
   provider?: EmployeeProvider;
+  /** True when this employee clocked out before the roster was last saved.
+   *  rehireSavedEmployees() registers them off duty instead of starting a
+   *  session — no character until the user clocks them back in. */
+  offDuty?: boolean;
 }
 
 export function readEmployees(): SavedEmployee[] {

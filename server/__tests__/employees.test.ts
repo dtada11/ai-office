@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
@@ -5,6 +8,8 @@ import type { EmployeeEvent, PermissionAsk } from '../src/employee.js';
 import type { SavedEmployee } from '../src/employeePersistence.js';
 import { readEmployees, writeEmployees } from '../src/employeePersistence.js';
 import {
+  clockIn,
+  clockOut,
   disposeEmployees,
   getPendingPermissionRequests,
   hireEmployee,
@@ -21,6 +26,7 @@ import {
 interface FakeEmployee {
   startedWith: string | undefined;
   startedWithPersona: string | undefined;
+  startedWithHandoffNote: string | undefined;
   start: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
@@ -35,6 +41,7 @@ vi.mock('../src/employee.js', () => {
   class ClaudeEmployee {
     startedWith: string | undefined;
     startedWithPersona: string | undefined;
+    startedWithHandoffNote: string | undefined;
     setModel = vi.fn(async (_model: string) => {});
     send = vi.fn();
     stop = vi.fn();
@@ -55,9 +62,15 @@ vi.mock('../src/employee.js', () => {
     }
 
     start = vi.fn(
-      async (model?: string, _delegation?: unknown, persona?: string): Promise<void> => {
+      async (
+        model?: string,
+        _delegation?: unknown,
+        persona?: string,
+        handoffNote?: string,
+      ): Promise<void> => {
         this.startedWith = model;
         this.startedWithPersona = persona;
+        this.startedWithHandoffNote = handoffNote;
       },
     );
 
@@ -368,6 +381,155 @@ describe('employees', () => {
         expect.objectContaining({
           type: 'employeeState',
           employees: [expect.objectContaining({ roleLabel: 'PM', persona: '꼼꼼하게' })],
+        }),
+      );
+    });
+  });
+
+  // Handoff notes hit the real filesystem (writeHandoffNote/readLatestHandoffNote),
+  // so these use a real temp cwd rather than the fake '/work' the other tests use —
+  // never the user's actual home or project folder (lesson from 042f97c).
+  describe('duty (clock in/out)', () => {
+    let tmpCwd: string;
+
+    beforeEach(() => {
+      tmpCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-office-duty-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    function handoffDir(cwd: string): string {
+      return path.join(cwd, '.ai-office', 'handoff');
+    }
+
+    it('퇴근하면 요약이 md로 저장되고, 캐릭터는 사라지지만 명부에는 duty:off로 남는다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '오늘 로그인 버그를 고쳤습니다.' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const files = fs.readdirSync(handoffDir(tmpCwd));
+      expect(files).toHaveLength(1);
+      const saved = fs.readFileSync(path.join(handoffDir(tmpCwd), files[0]), 'utf8');
+      expect(saved).toContain('오늘 로그인 버그를 고쳤습니다.');
+
+      expect(store.get(1)).toBeUndefined();
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ agentId: 1, duty: 'off' })],
+        }),
+      );
+    });
+
+    it('요약 중 text 이벤트는 채팅창으로 broadcast되지 않는다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '민감한 요약 내용' });
+
+      expect(broadcasts).not.toContainEqual(
+        expect.objectContaining({ type: 'agentEvent', kind: 'text', text: '민감한 요약 내용' }),
+      );
+    });
+
+    it('요약 중 tool 이벤트도 채팅창으로 broadcast되지 않는다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+
+      clockOut(store, 1);
+      created[0].emit({ kind: 'tool', text: 'Read' });
+
+      expect(broadcasts).not.toContainEqual(
+        expect.objectContaining({ type: 'agentEvent', kind: 'tool', text: 'Read' }),
+      );
+    });
+
+    it('진행 중인 턴이 있으면 그 턴의 result가 아니라 요약 턴의 result에서 resolve된다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+
+      // A turn is already in flight when the user clicks 퇴근.
+      created[0].emit({ kind: 'text', text: '기존 작업 응답' });
+      clockOut(store, 1);
+
+      // The summary prompt must not be sent yet — the in-flight turn owns the
+      // session until its own result arrives.
+      expect(created[0].send).not.toHaveBeenCalled();
+
+      // That in-flight turn finishes.
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      // Only now does the handoff summary start.
+      expect(created[0].send).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(handoffDir(tmpCwd))).toBe(false);
+
+      // The summary turn itself runs and finishes.
+      created[0].emit({ kind: 'text', text: '요약 내용' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const files = fs.readdirSync(handoffDir(tmpCwd));
+      expect(files).toHaveLength(1);
+    });
+
+    it('노트 11개째를 저장하면 가장 오래된 1개가 삭제되어 10개로 유지된다', async () => {
+      const dir = handoffDir(tmpCwd);
+      fs.mkdirSync(dir, { recursive: true });
+      for (let i = 0; i < 10; i++) {
+        fs.writeFileSync(path.join(dir, `2020-01-01T00-00-0${i}.000Z.md`), `old note ${i}`);
+      }
+
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '열한 번째 노트' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const files = fs.readdirSync(dir).sort();
+      expect(files).toHaveLength(10);
+      expect(files).not.toContain('2020-01-01T00-00-00.000Z.md');
+      expect(files).toContain('2020-01-01T00-00-01.000Z.md');
+    });
+
+    it('출근하면 새 인스턴스로 최신 노트 본문을 systemPrompt에 실어 시작한다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '직전 근무 요약입니다' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      await clockIn(store, 1);
+
+      expect(created).toHaveLength(2);
+      expect(created[1].startedWithHandoffNote).toContain('직전 근무 요약입니다');
+      expect(store.get(1)).toBeDefined();
+    });
+
+    it('노트가 없어도 출근은 정상 동작한다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '검증', cwd: tmpCwd, role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      expect(created).toHaveLength(0); // offDuty: no session started yet
+
+      await clockIn(store, 1);
+
+      expect(created).toHaveLength(1);
+      expect(created[0].startedWithHandoffNote).toBeUndefined();
+    });
+
+    it('rehireSavedEmployees는 offDuty 직원을 세션·캐릭터 없이 명부에만 등록한다', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '코더', cwd: '/work', role: 'staff', offDuty: true },
+      ]);
+
+      await rehireSavedEmployees(store, SONNET);
+
+      expect(created).toHaveLength(0);
+      expect(store.get(1)).toBeUndefined();
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ agentId: 1, duty: 'off' })],
         }),
       );
     });
