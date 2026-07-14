@@ -26,6 +26,136 @@ const MODE_LABEL: Record<string, string> = {
   apiKey: 'API 키',
 };
 
+/** Duty status: filled dot = present, hollow dot = away, pulsing amber = mid-handoff.
+ *  Color alone would not survive a glance at the muted-text row below it, so on/off
+ *  is also filled-vs-hollow, and a text label spells it out — no hover required.
+ *  Follows EmployeeChat.tsx's busy indicator (dot + label, own line, gap-4). */
+function DutyStatus({ duty }: { duty: EmployeeInfo['duty'] }) {
+  const { dotClass, textClass, label } =
+    duty === 'clockingOut'
+      ? {
+          dotClass: 'bg-status-permission pixel-pulse',
+          textClass: 'text-status-permission',
+          label: '퇴근 처리 중',
+        }
+      : duty === 'on'
+        ? { dotClass: 'bg-status-success', textClass: 'text-status-success', label: '근무 중' }
+        : { dotClass: 'border-2 border-border', textClass: 'text-text-muted', label: '퇴근함' };
+
+  return (
+    <div className="flex items-center gap-4">
+      <span className={`w-6 h-6 rounded-full shrink-0 ${dotClass}`} />
+      <span className={`text-2xs whitespace-nowrap ${textClass}`}>{label}</span>
+    </div>
+  );
+}
+
+interface EmployeeRowProps {
+  employee: EmployeeInfo;
+  isEditingLabel: boolean;
+  labelDraft: string;
+  onLabelDraftChange: (value: string) => void;
+  onStartEditingLabel: () => void;
+  onSaveLabel: () => void;
+  onCancelEditingLabel: () => void;
+  onOpenPersona: () => void;
+}
+
+function EmployeeRow({
+  employee: e,
+  isEditingLabel,
+  labelDraft,
+  onLabelDraftChange,
+  onStartEditingLabel,
+  onSaveLabel,
+  onCancelEditingLabel,
+  onOpenPersona,
+}: EmployeeRowProps) {
+  return (
+    <div
+      className={`flex items-start justify-between gap-8 p-6 border-2 border-border bg-bg-dark ${
+        e.duty === 'off' ? 'text-text-muted' : ''
+      }`}
+      data-testid={`employee-row-${e.agentId}`}
+    >
+      <div className="flex flex-col min-w-0 gap-2">
+        <DutyStatus duty={e.duty} />
+        <span className="text-xs font-bold flex items-center gap-4 flex-wrap">
+          {e.name}
+          {isEditingLabel ? (
+            <>
+              <input
+                className="bg-bg-dark border-2 border-border rounded-none px-4 py-2 font-mono text-2xs font-normal text-text outline-none"
+                value={labelDraft}
+                onChange={(ev) => onLabelDraftChange(ev.target.value)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter') onSaveLabel();
+                  if (ev.key === 'Escape') onCancelEditingLabel();
+                }}
+                placeholder={e.role === 'vp' ? '부사장' : '팀원'}
+                autoFocus
+              />
+              <Button variant="ghost" size="icon" onClick={onSaveLabel} title="저장">
+                ✓
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="font-normal text-text-muted">
+                ({e.roleLabel || (e.role === 'vp' ? '부사장' : '팀원')})
+              </span>
+              <Button variant="ghost" size="icon" onClick={onStartEditingLabel} title="직함 수정">
+                ✎
+              </Button>
+            </>
+          )}
+        </span>
+        <span
+          className="font-mono text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap block"
+          title={e.cwd}
+        >
+          {e.cwd}
+        </span>
+        <span className="text-2xs text-text-muted">
+          {e.authMode ? MODE_LABEL[e.authMode] : ''}
+          {e.ownProvider ? ' (직접 연결)' : ''}
+          {/* Subscription work is already paid for, so a dollar figure there
+              would be a fiction — only a key-mode employee has a bill. */}
+          {e.authMode === 'apiKey' ? ` · $${(e.costUsd ?? 0).toFixed(4)}` : ''}
+        </span>
+      </div>
+      <div className="flex items-center gap-4 shrink-0">
+        <Button variant="default" size="sm" onClick={onOpenPersona} title="지침 보기/수정">
+          지침
+        </Button>
+        <Button
+          variant={e.duty === 'clockingOut' ? 'disabled' : e.duty === 'on' ? 'active' : 'default'}
+          size="sm"
+          disabled={e.duty === 'clockingOut'}
+          onClick={() =>
+            transport.send({
+              type: e.duty === 'on' ? 'clockOut' : 'clockIn',
+              agentId: e.agentId,
+            })
+          }
+          title={e.duty === 'on' ? '업무를 남기고 퇴근' : '노트를 읽고 출근'}
+        >
+          {e.duty === 'clockingOut' ? '퇴근 중…' : e.duty === 'on' ? '퇴근' : '출근'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hover:text-danger!"
+          onClick={() => transport.send({ type: 'fireEmployee', agentId: e.agentId })}
+          title="세션 종료 후 퇴장"
+        >
+          해임
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function StaffPanel({
   employees,
   officeProvider,
@@ -102,164 +232,97 @@ export function StaffPanel({
         </Button>
       </div>
 
-      {employees.length === 0 ? (
-        <span className="text-xs text-text-muted">아직 직원이 없습니다.</span>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {employees.map((e) => (
-            <div
-              key={e.agentId}
-              className={`flex flex-col gap-4 ${e.duty === 'off' ? 'text-text-muted' : ''}`}
-            >
-              <div className="flex items-center justify-between gap-8">
-                <div className="flex flex-col">
-                  <span className="text-xs flex items-center gap-4">
-                    {e.name}
-                    {editingLabelId === e.agentId ? (
-                      <>
-                        <input
-                          className="bg-bg-dark border-2 border-border rounded-none px-4 py-2 font-mono text-2xs text-text outline-none"
-                          value={labelDraft}
-                          onChange={(ev) => setLabelDraft(ev.target.value)}
-                          onKeyDown={(ev) => {
-                            if (ev.key === 'Enter') saveLabel(e.agentId);
-                            if (ev.key === 'Escape') setEditingLabelId(null);
-                          }}
-                          placeholder={e.role === 'vp' ? '부사장' : '팀원'}
-                          autoFocus
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => saveLabel(e.agentId)}
-                          title="저장"
-                        >
-                          ✓
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        {` (${e.roleLabel || (e.role === 'vp' ? '부사장' : '팀원')})`}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => startEditingLabel(e)}
-                          title="직함 수정"
-                        >
-                          ✎
-                        </Button>
-                      </>
-                    )}
-                  </span>
-                  <span className="font-mono text-xs text-text-muted break-all">{e.cwd}</span>
-                  <span className="text-xs text-text-muted">
-                    {e.authMode ? MODE_LABEL[e.authMode] : ''}
-                    {e.ownProvider ? ' (직접 연결)' : ''}
-                    {/* Subscription work is already paid for, so a dollar figure there
-                        would be a fiction — only a key-mode employee has a bill. */}
-                    {e.authMode === 'apiKey' ? ` · $${(e.costUsd ?? 0).toFixed(4)}` : ''}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <Button variant="default" size="sm" onClick={() => onOpenPersona(e.agentId)}>
-                    지침 보기/수정
-                  </Button>
-                  <Button
-                    variant={
-                      e.duty === 'clockingOut' ? 'disabled' : e.duty === 'on' ? 'active' : 'default'
-                    }
-                    size="sm"
-                    disabled={e.duty === 'clockingOut'}
-                    onClick={() =>
-                      transport.send({
-                        type: e.duty === 'on' ? 'clockOut' : 'clockIn',
-                        agentId: e.agentId,
-                      })
-                    }
-                    title={e.duty === 'on' ? '업무를 남기고 퇴근' : '노트를 읽고 출근'}
-                  >
-                    {e.duty === 'clockingOut' ? '퇴근 중…' : e.duty === 'on' ? '퇴근' : '출근'}
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => transport.send({ type: 'fireEmployee', agentId: e.agentId })}
-                    title="세션 종료 후 퇴장"
-                  >
-                    해임
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col gap-4">
+        <span className="text-xs text-text-muted">직원 목록 · {employees.length}명</span>
+        {employees.length === 0 ? (
+          <span className="text-xs text-text-muted">아직 직원이 없습니다.</span>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {employees.map((e) => (
+              <EmployeeRow
+                key={e.agentId}
+                employee={e}
+                isEditingLabel={editingLabelId === e.agentId}
+                labelDraft={labelDraft}
+                onLabelDraftChange={setLabelDraft}
+                onStartEditingLabel={() => startEditingLabel(e)}
+                onSaveLabel={() => saveLabel(e.agentId)}
+                onCancelEditingLabel={() => setEditingLabelId(null)}
+                onOpenPersona={() => onOpenPersona(e.agentId)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-4 border-t-2 border-border pt-6">
-        <input
-          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="이름 (예: 비서)"
-          data-testid="hire-name"
-        />
-        <input
-          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
-          value={cwd}
-          onChange={(e) => setCwd(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') hire();
-          }}
-          placeholder="담당 폴더 (예: F:\Projects\ai-office)"
-          data-testid="hire-cwd"
-        />
-        <input
-          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
-          value={roleLabel}
-          onChange={(e) => setRoleLabel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') hire();
-          }}
-          placeholder="직함 (비우면 기본값: 부사장/팀원)"
-          data-testid="hire-role-label"
-        />
-        <textarea
-          className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none resize-none"
-          rows={3}
-          value={persona}
-          onChange={(e) => setPersona(e.target.value)}
-          placeholder="이 직원의 역할·성격·주의사항을 적어주세요 (선택)"
-          data-testid="hire-persona"
-        />
-        {!hasVp && (
-          <label className="flex items-center gap-4 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isVp}
-              onChange={(e) => setIsVp(e.target.checked)}
-              data-testid="hire-vp"
-            />
-            부사장으로 (팀원에게 일을 시킬 수 있음)
-          </label>
-        )}
-
-        <div className="flex flex-col gap-4 border-t-2 border-border pt-4">
-          <span className="text-xs text-text-muted">
-            AI 연결
-            {officeProvider ? ` · 사무실 기본: ${MODE_LABEL[officeProvider.mode]}` : ''}
-          </span>
-          <ProviderPicker
-            mode={mode}
-            onModeChange={setMode}
-            secret={secret}
-            onSecretChange={setSecret}
-            includeOffice
+        <span className="text-xs text-text-muted">새 직원 고용</span>
+        <div className="flex flex-col gap-4 border-2 border-border bg-bg-dark p-6">
+          <input
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="이름 (예: 비서)"
+            data-testid="hire-name"
           />
-        </div>
+          <input
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={cwd}
+            onChange={(e) => setCwd(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') hire();
+            }}
+            placeholder="담당 폴더 (예: F:\Projects\ai-office)"
+            data-testid="hire-cwd"
+          />
+          <input
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={roleLabel}
+            onChange={(e) => setRoleLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') hire();
+            }}
+            placeholder="직함 (비우면 기본값: 부사장/팀원)"
+            data-testid="hire-role-label"
+          />
+          <textarea
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none resize-none"
+            rows={3}
+            value={persona}
+            onChange={(e) => setPersona(e.target.value)}
+            placeholder="이 직원의 역할·성격·주의사항을 적어주세요 (선택)"
+            data-testid="hire-persona"
+          />
+          {!hasVp && (
+            <label className="flex items-center gap-4 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isVp}
+                onChange={(e) => setIsVp(e.target.checked)}
+                data-testid="hire-vp"
+              />
+              부사장으로 (팀원에게 일을 시킬 수 있음)
+            </label>
+          )}
 
-        <Button variant="default" size="sm" onClick={hire}>
-          고용
-        </Button>
+          <div className="flex flex-col gap-4 border-t-2 border-border pt-4">
+            <span className="text-xs text-text-muted">
+              AI 연결
+              {officeProvider ? ` · 사무실 기본: ${MODE_LABEL[officeProvider.mode]}` : ''}
+            </span>
+            <ProviderPicker
+              mode={mode}
+              onModeChange={setMode}
+              secret={secret}
+              onSecretChange={setSecret}
+              includeOffice
+            />
+          </div>
+
+          <Button variant="default" size="sm" onClick={hire}>
+            고용
+          </Button>
+        </div>
       </div>
     </div>
   );
