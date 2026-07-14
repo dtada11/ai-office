@@ -18,6 +18,10 @@ export interface SavedEmployee {
   cwd: string;
   /** vp = the boss's assistant, the only one who may delegate. */
   role: 'vp' | 'staff';
+  /** What to call them on screen. Absent = the default label for their role. */
+  roleLabel?: string;
+  /** Standing instructions, applied when the session starts. */
+  persona?: string;
   /** The model they were last working on. Absent = start them on the office default. */
   model?: string;
   /** The AI this employee brings themselves. Absent = follow the office default,

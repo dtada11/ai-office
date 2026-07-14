@@ -37,6 +37,12 @@ interface Staff {
   name: string;
   cwd: string;
   role: EmployeeRole;
+  /** What they are called on screen. The office names its own jobs; `role` is still
+   *  what decides what they may do. Unset = the default label for their role. */
+  roleLabel?: string;
+  /** Their standing instructions, folded into the session's system prompt when it
+   *  starts. Changing it here does not reach a session already running. */
+  persona?: string;
   model: string;
   contextTokens: number;
   contextLimit: number;
@@ -102,6 +108,8 @@ function broadcastStaff(store: AgentStateStore): void {
       name: s.name,
       cwd: s.cwd,
       role: s.role,
+      ...(s.roleLabel ? { roleLabel: s.roleLabel } : {}),
+      ...(s.persona ? { persona: s.persona } : {}),
       model: s.model,
       contextTokens: s.contextTokens,
       contextLimit: s.contextLimit,
@@ -269,6 +277,10 @@ export async function hireEmployee(
   runtime?: AgentRuntime,
   /** The AI they bring themselves; omitted = whatever the office runs on. */
   ownProvider?: EmployeeProvider,
+  /** What to call them on screen; omitted = the default label for their role. */
+  roleLabel?: string,
+  /** Their standing instructions, applied as the session starts. */
+  persona?: string,
 ): Promise<void> {
   if (!name.trim() || !cwd.trim()) return;
 
@@ -296,6 +308,8 @@ export async function hireEmployee(
     name,
     cwd,
     role,
+    roleLabel,
+    persona,
     // Seeded with what we started them on, so a re-hired employee keeps their
     // model in the roster even if they never take a turn. The next reply's usage
     // event is what confirms it.
@@ -306,7 +320,7 @@ export async function hireEmployee(
     provider,
     costUsd: 0,
   });
-  await employee.start(model, role === 'vp' ? delegationFor(store) : undefined);
+  await employee.start(model, role === 'vp' ? delegationFor(store) : undefined, persona);
   broadcastStaff(store);
   saveStaff();
   console.log(
@@ -378,6 +392,28 @@ export function setEmployeeModelFor(store: AgentStateStore, agentId: number, mod
     });
 }
 
+/** Change what an employee is called on screen. Display only — role, and the
+ *  session it gates, are untouched, so this reaches every client immediately. */
+export function renameEmployee(store: AgentStateStore, agentId: number, roleLabel: string): void {
+  const current = staff.get(agentId);
+  if (!current) return;
+  current.roleLabel = roleLabel;
+  saveStaff();
+  broadcastStaff(store);
+}
+
+/** Rewrite an employee's standing instructions. Saved for the next hire only — the
+ *  session already running never sees it, because employee.start() is not called
+ *  again here. That silence is the point: a live conversation must not shift under
+ *  the user mid-turn. */
+export function setEmployeePersona(store: AgentStateStore, agentId: number, persona: string): void {
+  const current = staff.get(agentId);
+  if (!current) return;
+  current.persona = persona;
+  saveStaff();
+  broadcastStaff(store);
+}
+
 /** Send the current staff to a client that just connected. */
 export function sendStaffTo(store: AgentStateStore): void {
   broadcastStaff(store);
@@ -389,6 +425,8 @@ function saveStaff(): void {
       name: s.name,
       cwd: s.cwd,
       role: s.role,
+      ...(s.roleLabel ? { roleLabel: s.roleLabel } : {}),
+      ...(s.persona ? { persona: s.persona } : {}),
       ...(s.model ? { model: s.model } : {}),
       ...(s.ownProvider ? { provider: s.ownProvider } : {}),
     })),
@@ -412,6 +450,8 @@ export async function rehireSavedEmployees(
       saved.model ?? model,
       runtime,
       saved.provider,
+      saved.roleLabel,
+      saved.persona,
     );
   }
 }

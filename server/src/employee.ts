@@ -77,7 +77,7 @@ export interface Employee {
   readonly cwd: string;
   /** Set once the session reports it; the office keys its character off this. */
   readonly sessionId: string;
-  start(model?: string, delegation?: Delegation): Promise<void>;
+  start(model?: string, delegation?: Delegation, persona?: string): Promise<void>;
   send(text: string): void;
   setModel(model: string): Promise<void>;
   stop(): void;
@@ -101,10 +101,24 @@ export class ClaudeEmployee implements Employee {
     private readonly provider: EmployeeProvider,
   ) {}
 
-  async start(model?: string, delegation?: Delegation): Promise<void> {
+  async start(model?: string, delegation?: Delegation, persona?: string): Promise<void> {
     const input = createInputStream();
     const sdk = await importSdk();
     const { query } = sdk;
+
+    // What this employee is told about themselves, on top of the stock prompt. A
+    // list because other blocks will join it later (a handover note, say) — they
+    // stack under the same append.
+    const promptBlocks = [persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null].filter(
+      (block): block is string => block !== null,
+    );
+    const systemPrompt = promptBlocks.length
+      ? {
+          type: 'preset' as const,
+          preset: 'claude_code' as const,
+          append: promptBlocks.join('\n\n---\n\n'),
+        }
+      : undefined;
 
     this.q = query({
       prompt: input.stream,
@@ -113,6 +127,7 @@ export class ClaudeEmployee implements Employee {
         model,
         // Replaces the environment wholesale, so buildEnv carries PATH/HOME over.
         env: buildEnv(this.provider),
+        ...(systemPrompt ? { systemPrompt } : {}),
         ...(delegation ? { mcpServers: { office: officeTools(sdk, delegation) } } : {}),
         canUseTool: async (toolName, toolInput, options) => {
           // Delegating is the VP's job, not a privileged act — never ask for it.

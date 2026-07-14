@@ -69,6 +69,8 @@ export type ClientMessage =
   | FireEmployee
   | SendAgentMessage
   | SetAgentModel
+  | RenameEmployee
+  | SetEmployeePersona
   | AgentPermissionDecision
   | RefreshPlanUsage
   | SetOfficeProvider;
@@ -233,6 +235,8 @@ export interface EmployeeInfo {
   name: string;
   cwd: string;
   role: EmployeeRole;
+  roleLabel?: string;
+  persona?: string;
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
@@ -485,6 +489,8 @@ export interface HireEmployee {
   name: string;
   cwd: string;
   role: EmployeeRole;
+  roleLabel?: string;
+  persona?: string;
   provider?: EmployeeProvider;
 }
 
@@ -509,6 +515,18 @@ export interface SetAgentModel {
   type: 'setAgentModel';
   agentId: number;
   model: string;
+}
+
+export interface RenameEmployee {
+  type: 'renameEmployee';
+  agentId: number;
+  roleLabel: string;
+}
+
+export interface SetEmployeePersona {
+  type: 'setEmployeePersona';
+  agentId: number;
+  persona: string;
 }
 
 export interface AgentPermissionDecision {

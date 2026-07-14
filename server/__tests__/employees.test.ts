@@ -9,8 +9,10 @@ import {
   getPendingPermissionRequests,
   hireEmployee,
   rehireSavedEmployees,
+  renameEmployee,
   resolveEmployeePermission,
   setEmployeeModelFor,
+  setEmployeePersona,
 } from '../src/employees.js';
 
 /** The employee the registry actually hired, with the session stubbed out: no SDK,
@@ -18,6 +20,8 @@ import {
  *  it plays a tool call that needs the user's approval. */
 interface FakeEmployee {
   startedWith: string | undefined;
+  startedWithPersona: string | undefined;
+  start: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -30,6 +34,7 @@ vi.mock('../src/employee.js', () => {
 
   class ClaudeEmployee {
     startedWith: string | undefined;
+    startedWithPersona: string | undefined;
     setModel = vi.fn(async (_model: string) => {});
     send = vi.fn();
     stop = vi.fn();
@@ -49,9 +54,12 @@ vi.mock('../src/employee.js', () => {
       created.push(this as unknown as FakeEmployee);
     }
 
-    async start(model?: string): Promise<void> {
-      this.startedWith = model;
-    }
+    start = vi.fn(
+      async (model?: string, _delegation?: unknown, persona?: string): Promise<void> => {
+        this.startedWith = model;
+        this.startedWithPersona = persona;
+      },
+    );
 
     emit(event: EmployeeEvent): void {
       this.onEvent(event);
@@ -222,6 +230,91 @@ describe('employees', () => {
     });
   });
 
+  describe('roleLabel', () => {
+    it('is stored at hire time and shows up in the broadcast', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET, undefined, undefined, 'PM');
+
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ agentId: 1, roleLabel: 'PM' })],
+        }),
+      );
+    });
+
+    it('renameEmployee changes only the label, without touching the running session', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      created[0].start.mockClear();
+
+      renameEmployee(store, 1, 'PM');
+
+      expect(created[0].start).not.toHaveBeenCalled();
+      expect(savedRoster()[0]).toEqual(expect.objectContaining({ name: '코더', roleLabel: 'PM' }));
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ roleLabel: 'PM' })],
+        }),
+      );
+    });
+
+    it('ignores an agentId nobody works under', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const writes = vi.mocked(writeEmployees).mock.calls.length;
+
+      renameEmployee(store, 99, 'PM');
+
+      expect(vi.mocked(writeEmployees).mock.calls.length).toBe(writes);
+    });
+  });
+
+  describe('persona', () => {
+    const PERSONA = '당신은 꼼꼼하고 보수적인 백엔드 담당입니다';
+
+    it('is passed to the session at hire time', async () => {
+      await hireEmployee(
+        store,
+        '코더',
+        '/work',
+        'staff',
+        SONNET,
+        undefined,
+        undefined,
+        undefined,
+        PERSONA,
+      );
+
+      expect(created[0].startedWithPersona).toBe(PERSONA);
+    });
+
+    it('setEmployeePersona saves the new text and broadcasts it, but never restarts the session', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      created[0].start.mockClear();
+
+      setEmployeePersona(store, 1, PERSONA);
+
+      // The one guarantee that matters: a live conversation must not shift under
+      // the user mid-turn. Saving a new persona must not re-issue start().
+      expect(created[0].start).not.toHaveBeenCalled();
+      expect(savedRoster()[0]).toEqual(expect.objectContaining({ persona: PERSONA }));
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ persona: PERSONA })],
+        }),
+      );
+    });
+
+    it('ignores an agentId nobody works under', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const writes = vi.mocked(writeEmployees).mock.calls.length;
+
+      setEmployeePersona(store, 99, PERSONA);
+
+      expect(vi.mocked(writeEmployees).mock.calls.length).toBe(writes);
+    });
+  });
+
   describe('roster', () => {
     it('saves the model an employee is started on', async () => {
       await hireEmployee(store, '코더', '/work', 'staff', SONNET);
@@ -261,6 +354,22 @@ describe('employees', () => {
       expect(created[0].startedWith).toBe(HAIKU);
       // No model on file: the office default is what they clock in on.
       expect(created[1].startedWith).toBe(SONNET);
+    });
+
+    it('re-hires an employee with their saved title and instructions', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '코더', cwd: '/work', role: 'staff', roleLabel: 'PM', persona: '꼼꼼하게' },
+      ]);
+
+      await rehireSavedEmployees(store, SONNET);
+
+      expect(created[0].startedWithPersona).toBe('꼼꼼하게');
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: 'employeeState',
+          employees: [expect.objectContaining({ roleLabel: 'PM', persona: '꼼꼼하게' })],
+        }),
+      );
     });
   });
 });

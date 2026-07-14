@@ -10,10 +10,12 @@ import {
   getPendingPermissionRequests,
   hireEmployee,
   isEmployee,
+  renameEmployee,
   resolveEmployeePermission,
   sendStaffTo,
   sendToEmployee,
   setEmployeeModelFor,
+  setEmployeePersona,
 } from './employees.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
@@ -142,6 +144,14 @@ export function handleClientMessage(
       setEmployeeModelFor(store, msg.agentId as number, msg.model as string);
       break;
 
+    case 'renameEmployee':
+      renameEmployee(store, msg.agentId as number, msg.roleLabel as string);
+      break;
+
+    case 'setEmployeePersona':
+      setEmployeePersona(store, msg.agentId as number, msg.persona as string);
+      break;
+
     case 'addExternalAssetDirectory': {
       const newPath = msg.path as string | undefined;
       if (!newPath) break;
@@ -176,6 +186,8 @@ export function handleClientMessage(
         getConfiguredModel(),
         runtime,
         msg.provider as EmployeeProvider | undefined,
+        msg.roleLabel as string | undefined,
+        msg.persona as string | undefined,
       ).catch((err) => {
         console.error('[Pixel Agents] hire failed:', err);
       });

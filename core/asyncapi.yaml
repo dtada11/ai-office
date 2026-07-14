@@ -151,6 +151,8 @@ components:
         - $ref: '#/components/schemas/FireEmployee'
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/SetAgentModel'
+        - $ref: '#/components/schemas/RenameEmployee'
+        - $ref: '#/components/schemas/SetEmployeePersona'
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/RefreshPlanUsage'
         - $ref: '#/components/schemas/SetOfficeProvider'
@@ -585,6 +587,17 @@ components:
           description: The folder this employee is responsible for.
         role:
           $ref: '#/components/schemas/EmployeeRole'
+        roleLabel:
+          type: string
+          description: |
+            What to call this employee on screen. Free text — the office decides
+            what a job is named. `role` still decides what they may do; falls back
+            to a default label when unset.
+        persona:
+          type: string
+          description: |
+            Free-text standing instructions for this employee, appended to their
+            session's system prompt at hire time.
         model:
           type: string
           description: Model of the employee's latest reply; empty until it answers.
@@ -1093,6 +1106,14 @@ components:
           description: The folder this employee is responsible for.
         role:
           $ref: '#/components/schemas/EmployeeRole'
+        roleLabel:
+          type: string
+          description: What to call them on screen. Defaults by role when omitted.
+        persona:
+          type: string
+          description: |
+            Standing instructions for this employee. Applied when the session
+            starts, so a change only reaches them on a re-hire.
         provider:
           $ref: '#/components/schemas/EmployeeProvider'
 
@@ -1134,6 +1155,36 @@ components:
         agentId:
           type: integer
         model:
+          type: string
+
+    RenameEmployee:
+      description: |
+        Change what an employee is called on screen. Display only — it does not
+        touch their role, and their session keeps running untouched.
+      type: object
+      additionalProperties: false
+      required: [type, agentId, roleLabel]
+      properties:
+        type:
+          const: renameEmployee
+        agentId:
+          type: integer
+        roleLabel:
+          type: string
+
+    SetEmployeePersona:
+      description: |
+        Rewrite an employee's standing instructions. Saved to the roster, not
+        pushed into the running session — it takes effect on the next hire.
+      type: object
+      additionalProperties: false
+      required: [type, agentId, persona]
+      properties:
+        type:
+          const: setEmployeePersona
+        agentId:
+          type: integer
+        persona:
           type: string
 
     AgentPermissionDecision:

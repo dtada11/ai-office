@@ -93,6 +93,10 @@ export interface EmployeeInfo {
   name: string;
   cwd: string;
   role: 'vp' | 'staff';
+  /** What to call them on screen. Absent = the default label for their role. */
+  roleLabel?: string;
+  /** Their standing instructions. Absent = none set. */
+  persona?: string;
   model?: string;
   contextTokens?: number;
   contextLimit?: number;
