@@ -39,8 +39,12 @@ const FALLBACK_CAP_WEEKLY_MODEL = 300_000_000;
 /** Keep this many recently-seen message ids per file for usage dedupe. */
 const DEDUPE_CAP = 500;
 
-const SNAPSHOT_PATH = path.join(os.homedir(), '.pixel-agents', 'plan-usage.json');
-const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
+function getSnapshotPath(): string {
+  return path.join(os.homedir(), '.pixel-agents', 'plan-usage.json');
+}
+function getProjectsDir(): string {
+  return path.join(os.homedir(), '.claude', 'projects');
+}
 
 interface Snapshot {
   capturedAt: string;
@@ -111,7 +115,7 @@ export class PlanUsageTracker {
 
   private loadSnapshot(): void {
     try {
-      const raw = fs.readFileSync(SNAPSHOT_PATH, 'utf-8');
+      const raw = fs.readFileSync(getSnapshotPath(), 'utf-8');
       this.snapshot = JSON.parse(raw) as Snapshot;
       this.sessionAnchor = Date.parse(this.snapshot.sessionResetsAt);
       this.weeklyAnchor = Date.parse(this.snapshot.weeklyResetsAt);
@@ -145,9 +149,10 @@ export class PlanUsageTracker {
     const cutoff = Date.now() - WEEK_PERIOD_MS - 24 * 60 * 60 * 1000;
     let dirs: string[] = [];
     try {
-      dirs = (await fs.promises.readdir(PROJECTS_DIR, { withFileTypes: true }))
+      const projectsDir = getProjectsDir();
+      dirs = (await fs.promises.readdir(projectsDir, { withFileTypes: true }))
         .filter((d) => d.isDirectory())
-        .map((d) => path.join(PROJECTS_DIR, d.name));
+        .map((d) => path.join(projectsDir, d.name));
     } catch {
       return; // no transcripts at all
     }
@@ -271,7 +276,7 @@ export class PlanUsageTracker {
     this.snapshot.calibration = cal;
     this.calibrated = true;
     try {
-      fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(this.snapshot, null, 2), 'utf-8');
+      fs.writeFileSync(getSnapshotPath(), JSON.stringify(this.snapshot, null, 2), 'utf-8');
     } catch (err) {
       console.warn('[Pixel Agents] failed to persist plan-usage calibration:', err);
     }

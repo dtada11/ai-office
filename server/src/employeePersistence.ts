@@ -11,7 +11,9 @@ import * as path from 'path';
 import type { EmployeeProvider } from '../../core/src/messages.js';
 import { LAYOUT_FILE_DIR } from './constants.js';
 
-const ROSTER_PATH = path.join(os.homedir(), LAYOUT_FILE_DIR, 'employees.json');
+function getRosterPath(): string {
+  return path.join(os.homedir(), LAYOUT_FILE_DIR, 'employees.json');
+}
 
 export interface SavedEmployee {
   name: string;
@@ -31,7 +33,7 @@ export interface SavedEmployee {
 
 export function readEmployees(): SavedEmployee[] {
   try {
-    const parsed = JSON.parse(fs.readFileSync(ROSTER_PATH, 'utf8')) as {
+    const parsed = JSON.parse(fs.readFileSync(getRosterPath(), 'utf8')) as {
       employees?: SavedEmployee[];
     };
     return parsed.employees ?? [];
@@ -42,9 +44,10 @@ export function readEmployees(): SavedEmployee[] {
 
 export function writeEmployees(employees: SavedEmployee[]): void {
   try {
-    fs.mkdirSync(path.dirname(ROSTER_PATH), { recursive: true });
+    const rosterPath = getRosterPath();
+    fs.mkdirSync(path.dirname(rosterPath), { recursive: true });
     // The roster can now hold an employee's own key, so keep it owner-readable.
-    fs.writeFileSync(ROSTER_PATH, JSON.stringify({ employees }, null, 2) + '\n', {
+    fs.writeFileSync(rosterPath, JSON.stringify({ employees }, null, 2) + '\n', {
       encoding: 'utf8',
       mode: 0o600,
     });

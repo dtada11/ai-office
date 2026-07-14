@@ -133,7 +133,10 @@ function readSettings(homeDir) {
 }
 
 function normalizePathForMatch(value) {
-  return String(value).replace(/\\/g, '/');
+  // Windows commands built via JSON.stringify() double each backslash
+  // (JSON escaping); collapse one-or-more backslashes to a single slash so
+  // that form still matches a path.join()-built path normalized the same way.
+  return String(value).replace(/\\+/g, '/');
 }
 
 function isPixelAgentsHookCommand(homeDir, command) {

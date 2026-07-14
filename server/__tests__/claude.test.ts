@@ -240,7 +240,7 @@ describe('claudeProvider', () => {
   describe('formatToolStatus', () => {
     it('formats Read', () => {
       expect(claudeProvider.formatToolStatus('Read', { file_path: '/a/b.ts' })).toBe(
-        'Reading b.ts',
+        'b.ts 읽는 중',
       );
     });
     it('formats Task/Agent with description', () => {
@@ -252,10 +252,10 @@ describe('claudeProvider', () => {
       );
     });
     it('falls back to "Using X" for unknown tools', () => {
-      expect(claudeProvider.formatToolStatus('FancyTool', {})).toBe('Using FancyTool');
+      expect(claudeProvider.formatToolStatus('FancyTool', {})).toBe('FancyTool 사용 중');
     });
     it('handles undefined input', () => {
-      expect(claudeProvider.formatToolStatus('Read', undefined)).toBe('Reading ');
+      expect(claudeProvider.formatToolStatus('Read', undefined)).toBe(' 읽는 중');
     });
   });
 });

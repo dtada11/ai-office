@@ -17,7 +17,9 @@ import * as path from 'path';
 import type { AuthMode, EmployeeProvider } from '../../core/src/messages.js';
 import { LAYOUT_FILE_DIR } from './constants.js';
 
-const PROVIDER_PATH = path.join(os.homedir(), LAYOUT_FILE_DIR, 'ai-provider.json');
+function getProviderPath(): string {
+  return path.join(os.homedir(), LAYOUT_FILE_DIR, 'ai-provider.json');
+}
 
 /** The env vars the SDK reads, in its own order of precedence. */
 const API_KEY_VAR = 'ANTHROPIC_API_KEY';
@@ -41,7 +43,9 @@ function isAuthMode(value: unknown): value is AuthMode {
 export function readOfficeProvider(): OfficeProviderConfig {
   if (cached) return cached;
   try {
-    const raw = JSON.parse(fs.readFileSync(PROVIDER_PATH, 'utf8')) as Partial<OfficeProviderConfig>;
+    const raw = JSON.parse(
+      fs.readFileSync(getProviderPath(), 'utf8'),
+    ) as Partial<OfficeProviderConfig>;
     cached = {
       mode: isAuthMode(raw.mode) ? raw.mode : DEFAULT_OFFICE_PROVIDER.mode,
       apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
@@ -57,13 +61,14 @@ export function readOfficeProvider(): OfficeProviderConfig {
 export function writeOfficeProvider(config: OfficeProviderConfig): void {
   cached = config;
   try {
-    fs.mkdirSync(path.dirname(PROVIDER_PATH), { recursive: true });
-    const tmp = `${PROVIDER_PATH}.tmp`;
+    const providerPath = getProviderPath();
+    fs.mkdirSync(path.dirname(providerPath), { recursive: true });
+    const tmp = `${providerPath}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', {
       encoding: 'utf8',
       mode: 0o600,
     });
-    fs.renameSync(tmp, PROVIDER_PATH);
+    fs.renameSync(tmp, providerPath);
   } catch (err) {
     console.warn('[Pixel Agents] failed to save the office AI provider:', err);
   }

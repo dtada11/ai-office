@@ -11,7 +11,9 @@ import { readOfficeProvider } from './aiProvider.js';
  *  the machine's owner, so an employee running on someone else's key has no
  *  business inheriting it. */
 
-const SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+function getSettingsPath(): string {
+  return path.join(os.homedir(), '.claude', 'settings.json');
+}
 
 const CONTEXT_LIMIT_DEFAULT = 200_000;
 const CONTEXT_LIMIT_1M = 1_000_000;
@@ -22,7 +24,7 @@ let cachedAt = 0;
 
 function readSettings(): Record<string, unknown> | null {
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')) as Record<string, unknown>;
+    return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf8')) as Record<string, unknown>;
   } catch {
     return null;
   }
