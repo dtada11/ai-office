@@ -10,6 +10,7 @@ import type { AgentStateStore } from './agentStateStore.js';
 import type { AssetCache, SetHooksEnabledSideEffect } from './clientMessageHandler.js';
 import { handleClientMessage } from './clientMessageHandler.js';
 import { HOOK_API_PREFIX, MAX_HOOK_BODY_SIZE } from './constants.js';
+import { listDirectory } from './dirLister.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -80,6 +81,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   // ── Routes ──────────────────────────────────────────────────
 
   registerHealthRoute(app);
+  registerListDirRoute(app);
   registerHookRoute(app, options);
   registerWebSocketRoute(app, options);
 
@@ -100,6 +102,19 @@ function registerHealthRoute(app: FastifyInstance): void {
     uptime: Math.floor((Date.now() - startTime) / 1000),
     pid: process.pid,
   }));
+}
+
+// ── Folder Picker ──────────────────────────────────────────────
+
+/** Read-only directory listing for the hire form's folder picker. No auth --
+ *  same posture as /api/health: it's a local-only, read-only query, and the
+ *  CORS origin check registered above already keeps a malicious webpage's JS
+ *  from reading the response cross-origin. GET (not a WebSocket message) so
+ *  it doesn't need a core/asyncapi.yaml schema entry for what's just a query. */
+function registerListDirRoute(app: FastifyInstance): void {
+  app.get<{ Querystring: { path?: string } }>('/api/list-dir', async (request) => {
+    return listDirectory(request.query.path);
+  });
 }
 
 // ── Hook Events ────────────────────────────────────────────────

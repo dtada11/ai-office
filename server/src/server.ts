@@ -40,6 +40,7 @@ type HookEventCallback = (providerId: string, event: Record<string, unknown>) =>
  * Routes (via Fastify in httpServer.ts):
  * - `POST /api/hooks/:providerId` -- hook event (auth required, 64KB body limit)
  * - `GET /api/health` -- health check (no auth)
+ * - `GET /api/list-dir` -- read-only directory listing for the folder picker (no auth)
  * - `GET /ws` -- WebSocket for real-time agent state (auth required)
  *
  * Discovery: writes `~/.pixel-agents/server.json` with port, PID, and auth token.

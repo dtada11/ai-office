@@ -200,4 +200,59 @@ describe('PixelAgentsServer', () => {
 
     expect(received).toHaveLength(0);
   });
+
+  // 15. list-dir endpoint needs no auth (read-only, same posture as /api/health)
+  it('list-dir endpoint returns 200 with no Authorization header', async () => {
+    const config = await server.start();
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/list-dir`);
+    expect(res.status).toBe(200);
+  });
+
+  // 16. list-dir endpoint lists subdirectories of a real path
+  it('list-dir endpoint lists subdirectories of a given path', async () => {
+    const config = await server.start();
+    const target = path.join(tmpBase, 'a-folder');
+    fs.mkdirSync(target);
+    fs.mkdirSync(path.join(target, 'child'));
+    fs.writeFileSync(path.join(target, 'a-file.txt'), 'x');
+
+    const res = await fetch(
+      `http://127.0.0.1:${config.port}/api/list-dir?path=${encodeURIComponent(target)}`,
+    );
+    const body = (await res.json()) as {
+      path: string;
+      parent: string | null;
+      entries: { name: string; path: string }[];
+      error: boolean;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.error).toBe(false);
+    expect(body.entries).toEqual([{ name: 'child', path: path.join(target, 'child') }]);
+  });
+
+  // 17. list-dir endpoint degrades to a safe error response instead of crashing
+  it('list-dir endpoint returns a safe error response for a nonexistent path', async () => {
+    const config = await server.start();
+    const missing = path.join(tmpBase, 'does-not-exist');
+
+    const res = await fetch(
+      `http://127.0.0.1:${config.port}/api/list-dir?path=${encodeURIComponent(missing)}`,
+    );
+    const body = (await res.json()) as { error: boolean; entries: unknown[] };
+
+    expect(res.status).toBe(200);
+    expect(body.error).toBe(true);
+    expect(body.entries).toEqual([]);
+  });
+
+  // 18. list-dir endpoint returns the starting point for an empty/missing path param
+  it('list-dir endpoint returns the starting point when path is omitted', async () => {
+    const config = await server.start();
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/list-dir`);
+    const body = (await res.json()) as { error: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.error).toBe(false);
+  });
 });

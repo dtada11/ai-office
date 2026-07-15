@@ -4,6 +4,7 @@ import type { EmployeeInfo, OfficeProviderInfo } from '../hooks/useExtensionMess
 import { applyJobPreset, JOB_PRESETS } from '../jobPresets.js';
 import { MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
+import { FolderPicker } from './FolderPicker.js';
 import { type PickedMode, ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
 
@@ -183,6 +184,7 @@ export function StaffPanel({
   const [mode, setMode] = useState<PickedMode>('office');
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<StaffTabId>('roster');
+  const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
 
   // Which employee's title is being edited inline, and the draft text for it.
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
@@ -302,16 +304,26 @@ export function StaffPanel({
             placeholder="이름 (예: 비서)"
             data-testid="hire-name"
           />
-          <input
-            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
-            value={cwd}
-            onChange={(e) => setCwd(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') hire();
-            }}
-            placeholder="담당 폴더 (절대 경로, 예: C:\Users\me\projects\my-app)"
-            data-testid="hire-cwd"
-          />
+          <div className="flex gap-2">
+            <input
+              className="flex-1 min-w-0 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') hire();
+              }}
+              placeholder="담당 폴더 (절대 경로, 예: C:\Users\me\projects\my-app)"
+              data-testid="hire-cwd"
+            />
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setIsFolderPickerOpen(true)}
+              data-testid="hire-cwd-browse"
+            >
+              불러오기
+            </Button>
+          </div>
           <select
             className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
             value={jobId}
@@ -389,6 +401,12 @@ export function StaffPanel({
           </Button>
         </div>
       )}
+
+      <FolderPicker
+        isOpen={isFolderPickerOpen}
+        onClose={() => setIsFolderPickerOpen(false)}
+        onSelect={setCwd}
+      />
     </div>
   );
 }
