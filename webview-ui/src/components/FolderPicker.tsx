@@ -1,15 +1,37 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   collapseBreadcrumb,
   confirmedCwd,
   type DirEntry,
   type DirListing,
+  fallbackAfterRestore,
+  LAST_PATH_STORAGE_KEY,
   nextRequestPath,
   pathSegments,
+  startingPath,
 } from '../folderPicker.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
+
+/** localStorage read/write are wrapped in try/catch -- some webview hosts run
+ *  with storage disabled or restricted, and "resume where I left off" is a
+ *  nicety worth losing quietly, not a reason to break the picker. */
+function readLastPath(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_PATH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistLastPath(path: string): void {
+  try {
+    window.localStorage.setItem(LAST_PATH_STORAGE_KEY, path);
+  } catch {
+    // Ignore -- see readLastPath.
+  }
+}
 
 interface FolderPickerProps {
   isOpen: boolean;
@@ -46,35 +68,103 @@ function FolderIcon() {
 export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
   const [listing, setListing] = useState<DirListing | null>(null);
   const [loading, setLoading] = useState(false);
+  // Keyboard-driven highlight within the current entry list. -1 means "none
+  // yet" -- the first arrow press picks a starting entry (see moveFocus).
+  // Independent of real DOM focus: Tab still reaches the picker's buttons
+  // normally, this is just an accelerator for arrowing through the list.
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const entryRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  const load = useCallback((path: string) => {
+  // `isRestore` marks an attempt to resume the saved last-opened path, as
+  // opposed to an ordinary in-picker navigation. Only that kind of attempt
+  // triggers the "path is gone, bounce back to the starting screen" fallback.
+  const load = useCallback((path: string, isRestore = false): Promise<void> => {
     setLoading(true);
-    fetch(`/api/list-dir?path=${encodeURIComponent(path)}`)
+    return fetch(`/api/list-dir?path=${encodeURIComponent(path)}`)
       .then((res) => res.json() as Promise<DirListing>)
-      .then(setListing)
-      .catch(() => setListing({ path, parent: null, entries: [], error: true }))
+      .catch(() => ({ path, parent: null, entries: [], error: true }) as DirListing)
+      .then((result) => {
+        const fallback = fallbackAfterRestore(result, isRestore);
+        if (fallback !== null) return load(fallback);
+
+        setListing(result);
+        setFocusedIndex(-1);
+        const toPersist = confirmedCwd(result);
+        if (toPersist !== null) persistLastPath(toPersist);
+        return undefined;
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  // Reset to the starting screen (drive list / home) every time the picker opens.
+  // On open, resume the last-visited folder instead of the drive list --
+  // falling back to the starting screen on first use or a stale/dead path.
   useEffect(() => {
-    if (isOpen) load('');
+    if (isOpen) load(startingPath(readLastPath()), true);
   }, [isOpen, load]);
 
-  if (!isOpen) return null;
+  const goTo = useCallback(
+    (entry: DirEntry) => {
+      const next = nextRequestPath(listing, { type: 'drillDown', entry });
+      if (next !== null) load(next);
+    },
+    [listing, load],
+  );
 
-  const goTo = (entry: DirEntry) => {
-    const next = nextRequestPath(listing, { type: 'drillDown', entry });
-    if (next !== null) load(next);
-  };
-
-  const goUp = () => {
+  const goUp = useCallback(() => {
     const next = nextRequestPath(listing, { type: 'goToParent' });
     if (next !== null) load(next);
-  };
+  }, [listing, load]);
+
+  const moveFocus = useCallback(
+    (delta: number) => {
+      const count = listing?.entries.length ?? 0;
+      if (count === 0) return;
+      setFocusedIndex((prev) => {
+        if (prev < 0) return delta > 0 ? 0 : count - 1;
+        return Math.min(count - 1, Math.max(0, prev + delta));
+      });
+    },
+    [listing],
+  );
 
   const cwd = confirmedCwd(listing);
   const atTop = !listing || listing.parent === null;
+
+  // ↑↓ move the highlight, Enter drills into the highlighted entry, Backspace
+  // / ← go up a level, Esc closes (Modal itself doesn't handle Esc).
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveFocus(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveFocus(-1);
+      } else if (e.key === 'Enter') {
+        const entry = focusedIndex >= 0 ? listing?.entries[focusedIndex] : undefined;
+        if (entry) {
+          e.preventDefault();
+          goTo(entry);
+        }
+      } else if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (!atTop && !loading) goUp();
+      } else if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, listing, focusedIndex, atTop, loading, moveFocus, goTo, goUp, onClose]);
+
+  // Keep the highlighted entry in view as it moves past the scrollable list's edges.
+  useEffect(() => {
+    if (focusedIndex < 0) return;
+    entryRefs.current[focusedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex]);
+
+  if (!isOpen) return null;
 
   // Root-to-leaf crumbs for the current path, collapsed so a deep path
   // still reads as "root … parent / here" instead of an unbounded row.
@@ -172,12 +262,16 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
           )}
           {!loading &&
             !listing?.error &&
-            listing?.entries.map((entry) => (
+            listing?.entries.map((entry, i) => (
               <button
                 key={entry.path}
-                className="flex items-center gap-4 text-left text-xs px-6 py-3 rounded-none cursor-pointer bg-transparent border-none hover:bg-btn-hover"
+                ref={(el) => {
+                  entryRefs.current[i] = el;
+                }}
+                className={`flex items-center gap-4 text-left text-xs px-6 py-3 rounded-none cursor-pointer bg-transparent border-none hover:bg-btn-hover ${i === focusedIndex ? 'bg-btn-hover' : ''}`}
                 onClick={() => goTo(entry)}
                 data-testid="folder-picker-entry"
+                data-focused={i === focusedIndex || undefined}
               >
                 <FolderIcon />
                 <span className="min-w-0 flex-1 truncate">{entry.name}</span>

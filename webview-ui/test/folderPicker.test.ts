@@ -19,8 +19,10 @@ import type { DirListing } from '../src/folderPicker.js';
 import {
   collapseBreadcrumb,
   confirmedCwd,
+  fallbackAfterRestore,
   nextRequestPath,
   pathSegments,
+  startingPath,
 } from '../src/folderPicker.js';
 
 function listing(overrides: Partial<DirListing> = {}): DirListing {
@@ -128,4 +130,35 @@ test('collapseBreadcrumb respects a custom tailCount', () => {
     { ellipsis: true },
     { label: 'e', path: '/a/b/c/d/e' },
   ]);
+});
+
+// ── startingPath ────────────────────────────────────────────────
+
+test('startingPath resumes at the saved path when there is one', () => {
+  assert.equal(startingPath('C:\\Users\\me\\projects'), 'C:\\Users\\me\\projects');
+});
+
+test('startingPath falls back to the starting screen when nothing was saved', () => {
+  assert.equal(startingPath(null), '');
+});
+
+test('startingPath falls back to the starting screen for an empty saved value', () => {
+  assert.equal(startingPath(''), '');
+});
+
+// ── fallbackAfterRestore ────────────────────────────────────────
+
+test('fallbackAfterRestore bounces to the starting screen when restoring a path that failed to load', () => {
+  const failed = listing({ path: 'C:\\deleted-folder', error: true });
+  assert.equal(fallbackAfterRestore(failed, true), '');
+});
+
+test('fallbackAfterRestore does nothing when the restored path loaded fine', () => {
+  const ok = listing({ path: 'C:\\Users\\me\\projects', error: false });
+  assert.equal(fallbackAfterRestore(ok, true), null);
+});
+
+test('fallbackAfterRestore does nothing for an ordinary (non-restore) navigation failure', () => {
+  const failed = listing({ path: 'C:\\locked', error: true });
+  assert.equal(fallbackAfterRestore(failed, false), null);
 });

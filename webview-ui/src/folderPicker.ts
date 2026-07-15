@@ -18,6 +18,32 @@ export interface DirListing {
 
 export type FolderPickerAction = { type: 'drillDown'; entry: DirEntry } | { type: 'goToParent' };
 
+/** localStorage key the picker's last-visited path is saved under, so
+ *  reopening it resumes there instead of the drive list every time. */
+export const LAST_PATH_STORAGE_KEY = 'pxl-folderpicker-last';
+
+/** Where the picker should start browsing when it opens: the saved path if
+ *  there is one, otherwise the '' starting screen (drive list / home). Doesn't
+ *  know whether the saved path still exists -- that's only found out once the
+ *  load actually runs, at which point {@link fallbackAfterRestore} decides
+ *  whether to bounce back. */
+export function startingPath(storedPath: string | null): string {
+  return storedPath || '';
+}
+
+/** After an attempt to restore a saved path (`wasRestoring`), decides whether
+ *  to fall back to the starting screen. Only bounces back when the restore
+ *  attempt itself failed to load -- a saved folder that's been deleted, moved,
+ *  or gone out of permission since it was last saved. Ordinary navigation
+ *  failures elsewhere in the picker (e.g. clicking into a folder that turns
+ *  out to be locked) aren't restore attempts and shouldn't silently bounce the
+ *  user back to the drive list. Returns the fallback path ('') or null if no
+ *  fallback is needed. */
+export function fallbackAfterRestore(listing: DirListing, wasRestoring: boolean): string | null {
+  if (!wasRestoring || !listing.error) return null;
+  return '';
+}
+
 /** The path to request next for a drill-down or "go up" action, or null if
  *  the action isn't currently available (e.g. "go up" while already at the
  *  top, or with no listing loaded yet). */
