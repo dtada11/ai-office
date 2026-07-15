@@ -34,6 +34,7 @@ allure-report/
 # Project-specific
 .claude
 .mcp.json
+.ai-office/
 /sprites-export
 .vercel/
 agent-orchestrator.yaml
