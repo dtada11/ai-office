@@ -129,11 +129,15 @@ function registerListDirRoute(app: FastifyInstance): void {
  *  a plain object body (not a core/asyncapi.yaml schema) for the same reason
  *  list-dir is a GET and not a WebSocket message.
  *
- *  Content-Type is not checked here: Fastify's own body parser already
- *  rejects a body with an unrecognized or missing Content-Type (415/400)
- *  before this handler runs, since only 'application/json' is registered --
- *  see handle-request.js's FST_ERR_CTP_INVALID_MEDIA_TYPE / FST_ERR_CTP_EMPTY_TYPE.
- *  Verified in httpServer.test.ts so this stays intentional, not assumed. */
+ *  Content-Type is not checked explicitly here, and doesn't need to be. A
+ *  missing Content-Type, or an unregistered one like 'text/xml', is rejected
+ *  by Fastify's own body parser with 415 before this handler runs, since only
+ *  'application/json' is registered (see FST_ERR_CTP_* in handle-request.js).
+ *  'text/plain' is the exception: the default parser accepts it as a raw
+ *  string, so it does reach the handler -- but the string carries none of the
+ *  required fields and fails the check below with 400. Either way a non-JSON
+ *  body scaffolds nothing, and the origin guard blocks a cross-origin request
+ *  regardless of Content-Type. Both paths are covered in httpServer.test.ts. */
 function registerScaffoldTeamRoute(app: FastifyInstance): void {
   app.post<{ Body: { templateKey?: string; baseDir?: string; projectName?: string } }>(
     '/api/scaffold-team',

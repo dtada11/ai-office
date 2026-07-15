@@ -114,6 +114,22 @@ describe('POST /api/scaffold-team origin guard', () => {
     expect(fs.readdirSync(tmpRoot)).toEqual([]);
   });
 
+  // 4b. 'text/plain' is the one non-JSON Content-Type Fastify's default parser
+  // still accepts, so it slips past the 415 above and reaches the handler as a
+  // raw string. That string has none of the required fields, so the field check
+  // returns 400 -- nothing is scaffolded either way. Locks the comment on
+  // registerScaffoldTeamRoute (the causal path text/plain actually takes).
+  it('rejects a text/plain body with 400: parser accepts it, field check fails', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: '/api/scaffold-team',
+      headers: { origin: 'http://localhost:5173', 'content-type': 'text/plain' },
+      payload: 'templateKey=pure-dev',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(fs.readdirSync(tmpRoot)).toEqual([]);
+  });
+
   // 5. The hook endpoint (Origin-less by nature -- Claude Code's hook script
   // is not a browser) is untouched by this route's origin guard: it only
   // checks Bearer auth, same as before.
