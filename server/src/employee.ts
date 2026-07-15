@@ -109,6 +109,37 @@ function safeStringify(value: unknown): string | undefined {
   }
 }
 
+/** The SDK's own subagent spawners — blocked on the lead only. Exported bare so
+ *  the wiring can be asserted without a real SDK session (see `start()`). */
+export function leadDisallowedTools(delegation: Delegation | undefined): string[] | undefined {
+  return delegation ? ['Task', 'Agent'] : undefined;
+}
+
+/** Told to the lead only, on top of the stock prompt — nudges them toward
+ *  `mcp__office__delegate` instead of the SDK's own Task/Agent (which
+ *  `leadDisallowedTools` then blocks outright). Not part of `persona`: that's
+ *  user-edited and can be cleared, but this has to hold regardless. */
+const LEAD_GUIDANCE_BLOCK = `## 리드 지침
+너는 팀장이다. 일을 나눠 맡길 땐 반드시 \`list_staff\`로 팀원을 확인하고 \`delegate\`로 팀원에게 시킨 뒤 \`collect\`로 결과를 모아라. 네 세션 안에서 서브에이전트를 직접 만들지 마라 — 우리 사무실의 팀원들이 실제로 일하는 것이 이 도구의 목적이다. 위임 지시에는 팀원이 헛일을 반복하지 않도록 필요한 맥락(무엇을, 어느 폴더 기준으로, 무엇을 확인할지)을 담아라.`;
+
+/** What this employee is told about themselves, on top of the stock prompt —
+ *  lead guidance first (delegation only), then whatever the persona editor
+ *  added, then a handoff note if they're resuming a shift. Exported bare (no
+ *  class needed) so the wiring can be asserted without a real SDK session. */
+export function buildPromptBlocks(
+  delegation: Delegation | undefined,
+  persona: string | undefined,
+  handoffNote: string | undefined,
+): string[] {
+  return [
+    delegation ? LEAD_GUIDANCE_BLOCK : null,
+    persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null,
+    handoffNote?.trim()
+      ? `## 인수인계 노트\n아래는 당신이 직전 근무를 마치며 남긴 인수인계 노트다. 이어서 업무를 진행하라.\n\n${handoffNote.trim()}`
+      : null,
+  ].filter((block): block is string => block !== null);
+}
+
 // ── Claude implementation ───────────────────────────────────────
 
 export class ClaudeEmployee implements Employee {
@@ -137,15 +168,8 @@ export class ClaudeEmployee implements Employee {
     const sdk = await importSdk();
     const { query } = sdk;
 
-    // What this employee is told about themselves, on top of the stock prompt. A
-    // list because other blocks join it under the same append — standing
-    // instructions, then (on a clock-in) the note they left themselves.
-    const promptBlocks = [
-      persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null,
-      handoffNote?.trim()
-        ? `## 인수인계 노트\n아래는 당신이 직전 근무를 마치며 남긴 인수인계 노트다. 이어서 업무를 진행하라.\n\n${handoffNote.trim()}`
-        : null,
-    ].filter((block): block is string => block !== null);
+    const promptBlocks = buildPromptBlocks(delegation, persona, handoffNote);
+    const disallowedTools = leadDisallowedTools(delegation);
     const systemPrompt = promptBlocks.length
       ? {
           type: 'preset' as const,
@@ -163,6 +187,13 @@ export class ClaudeEmployee implements Employee {
         env: buildEnv(this.provider),
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(delegation ? { mcpServers: { office: officeTools(sdk, delegation) } } : {}),
+        // The lead has mcp__office__delegate for handing work to real teammates —
+        // the SDK's own Task/Agent just spawn ghosts inside the lead's own
+        // session, which never move a hired employee's character. Barring them
+        // here is what makes delegate the only way to fan work out. Staff have
+        // no delegation, so they keep Task/Agent (their own subagent characters
+        // still need it).
+        ...(disallowedTools ? { disallowedTools } : {}),
         canUseTool: async (toolName, toolInput, options) => {
           // Delegating is the VP's job, not a privileged act — never ask for it.
           // Whatever the team member then does still needs the user's approval.

@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { ClaudeEmployee, type EmployeeEvent } from '../src/employee.js';
+import {
+  buildPromptBlocks,
+  ClaudeEmployee,
+  type Delegation,
+  type EmployeeEvent,
+  leadDisallowedTools,
+} from '../src/employee.js';
+
+const fakeDelegation: Delegation = {
+  listStaff: () => '',
+  delegate: () => '',
+  collect: async () => '',
+};
 
 /** ClaudeEmployee.handle() only needs `host.onEvent` — it never touches `q`/`push`,
  *  so it can be driven directly without starting a real (or mocked) SDK session. */
@@ -79,5 +91,42 @@ describe('ClaudeEmployee — tool_use blocks', () => {
     handle(employee, assistantMessage([{ type: 'text', text: '안녕하세요' }]));
 
     expect(events).toContainEqual({ kind: 'text', text: '안녕하세요' });
+  });
+});
+
+describe('leadDisallowedTools — 팀장에게 내장 서브에이전트 도구를 금지', () => {
+  it('delegation이 있으면(팀장) Task와 Agent를 둘 다 막는다', () => {
+    expect(leadDisallowedTools(fakeDelegation)).toEqual(['Task', 'Agent']);
+  });
+
+  it('delegation이 없으면(스태프) 아무것도 안 막는다', () => {
+    expect(leadDisallowedTools(undefined)).toBeUndefined();
+  });
+});
+
+describe('buildPromptBlocks — 팀장 전용 리드 지침 블록', () => {
+  it('delegation이 있으면(팀장) 리드 지침 블록이 들어간다', () => {
+    const blocks = buildPromptBlocks(fakeDelegation, undefined, undefined);
+    expect(blocks.some((b) => b.includes('## 리드 지침'))).toBe(true);
+  });
+
+  it('delegation이 없으면(스태프) 리드 지침 블록이 없다', () => {
+    const blocks = buildPromptBlocks(undefined, undefined, undefined);
+    expect(blocks.some((b) => b.includes('## 리드 지침'))).toBe(false);
+  });
+
+  it('리드 지침 블록은 persona 유무와 무관하게 delegation만으로 결정된다', () => {
+    const blocks = buildPromptBlocks(fakeDelegation, '', undefined);
+    expect(blocks.some((b) => b.includes('## 리드 지침'))).toBe(true);
+    // persona가 비어 있으면 직원 지침 블록 자체는 안 생긴다(기존 동작 회귀 확인).
+    expect(blocks.some((b) => b.includes('## 직원 지침'))).toBe(false);
+  });
+
+  it('persona/handoffNote 블록은 기존과 동일하게 붙는다(회귀 확인)', () => {
+    const blocks = buildPromptBlocks(undefined, '친절하게 답하라', '어제 못다한 일: X');
+    expect(blocks).toEqual([
+      '## 직원 지침\n친절하게 답하라',
+      '## 인수인계 노트\n아래는 당신이 직전 근무를 마치며 남긴 인수인계 노트다. 이어서 업무를 진행하라.\n\n어제 못다한 일: X',
+    ]);
   });
 });
