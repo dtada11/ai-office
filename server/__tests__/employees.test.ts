@@ -14,6 +14,7 @@ import {
   clockOut,
   disposeEmployees,
   fireEmployee,
+  getHandoffDir,
   getPendingPermissionRequests,
   hireEmployee,
   rehireSavedEmployees,
@@ -802,8 +803,11 @@ describe('employees', () => {
       fs.rmSync(tmpCwd, { recursive: true, force: true });
     });
 
-    function handoffDir(cwd: string): string {
-      return path.join(cwd, '.ai-office', 'handoff');
+    // Notes now live in a per-employee subfolder. Default to 코더 since that is
+    // whom these tests hire, and delegate to the code's own resolver so the
+    // test can never drift from the real key derivation.
+    function handoffDir(cwd: string, name = '코더'): string {
+      return getHandoffDir(cwd, name);
     }
 
     it('퇴근하면 요약이 md로 저장되고, 캐릭터는 사라지지만 명부에는 duty:off로 남는다', async () => {
@@ -937,6 +941,32 @@ describe('employees', () => {
 
       expect(created).toHaveLength(1);
       expect(created[0].startedWithHandoffNote).toBeUndefined();
+    });
+
+    it('같은 cwd를 쓰는 두 직원은 서로의 인수인계 노트를 읽지 않는다', async () => {
+      // 코더가 남긴 노트를 코더 전용 폴더에 미리 심는다.
+      const coderDir = handoffDir(tmpCwd, '코더');
+      fs.mkdirSync(coderDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(coderDir, '2020-01-01T00-00-00.000Z.md'),
+        '---\nemployee: 코더\n---\n코더만 아는 인수인계',
+      );
+
+      // 코더·검증을 같은 cwd에 off-duty로 등록한다.
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '코더', cwd: tmpCwd, role: 'staff', offDuty: true },
+        { name: '검증', cwd: tmpCwd, role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+      expect(created).toHaveLength(0);
+
+      // 코더가 출근하면 자기 노트를 이어받는다(정상 경로 확인).
+      await clockIn(store, 1);
+      expect(created[0].startedWithHandoffNote).toContain('코더만 아는 인수인계');
+
+      // 검증이 같은 cwd에서 출근해도 코더의 노트를 물려받지 않는다 — 핵심.
+      await clockIn(store, 2);
+      expect(created[1].startedWithHandoffNote).toBeUndefined();
     });
 
     it('rehireSavedEmployees는 offDuty 직원을 세션·캐릭터 없이 명부에만 등록한다', async () => {

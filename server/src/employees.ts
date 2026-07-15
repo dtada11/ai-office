@@ -12,6 +12,7 @@
  * through askPermission, which asks the webview and waits.
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -506,8 +507,26 @@ function dismissEmployeeSession(runtime: AgentRuntime | undefined, current: Staf
 
 // ── Handoff notes (clock-out summaries) ─────────────────────────
 
-function getHandoffDir(cwd: string): string {
-  return path.join(cwd, '.ai-office', 'handoff');
+/** A folder per employee under the cwd's handoff dir, so two employees that
+ *  share a cwd (e.g. a lead over a repo and a staffer on the same repo) never
+ *  read each other's notes. Exported so tests resolve the same path this code
+ *  writes to. */
+export function getHandoffDir(cwd: string, name: string): string {
+  return path.join(cwd, '.ai-office', 'handoff', handoffKey(name));
+}
+
+/** Filesystem-safe folder segment identifying an employee within a cwd. A
+ *  sanitized name for legibility, plus a short hash of the full name so two
+ *  distinct names that sanitize to the same string still get separate folders
+ *  (the whole point here is that notes never cross). */
+function handoffKey(name: string): string {
+  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+  const safe = name
+    .trim()
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return safe ? `${safe}-${hash}` : hash;
 }
 
 /** Notes are named after when they were saved, so a plain sort orders them —
@@ -524,8 +543,8 @@ function stripFrontmatter(raw: string): string {
 /** The most recent handoff note's body (frontmatter stripped), or null if this
  *  employee has never clocked out — or the user deleted their notes — either of
  *  which is a normal, first-shift-like start. */
-function readLatestHandoffNote(cwd: string): string | null {
-  const dir = getHandoffDir(cwd);
+function readLatestHandoffNote(cwd: string, name: string): string | null {
+  const dir = getHandoffDir(cwd, name);
   let files: string[];
   try {
     files = fs
@@ -561,7 +580,7 @@ function pruneOldHandoffNotes(dir: string): void {
 }
 
 function writeHandoffNote(name: string, cwd: string, note: string): void {
-  const dir = getHandoffDir(cwd);
+  const dir = getHandoffDir(cwd, name);
   try {
     fs.mkdirSync(dir, { recursive: true });
     const filePath = path.join(dir, handoffFileName());
@@ -687,7 +706,7 @@ export async function clockIn(
   // the session has even confirmed a sessionId (that binding happens on 'ready').
   store.set(agentId, newCharacter(agentId, current.cwd, current.palette, current.hueShift));
 
-  const note = readLatestHandoffNote(current.cwd);
+  const note = readLatestHandoffNote(current.cwd, current.name);
 
   // A fresh instance, not the stopped one — it is not built to restart, and its
   // old sessionId would still be sitting on it.
