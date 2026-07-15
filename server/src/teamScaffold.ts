@@ -54,6 +54,13 @@ export function scaffoldTeamProject(
   if (!name || /[\\/]/.test(name) || name === '.' || name === '..') {
     return { ok: false, error: '프로젝트 이름이 비어 있거나 올바르지 않습니다.' };
   }
+  // Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9, with or
+  // without an extension) create folders Explorer and cmd then can't open or
+  // delete -- a baffling mess for the user. Refuse them on Windows. POSIX has no
+  // such reservation, so a folder literally named "con" there is fine.
+  if (process.platform === 'win32' && /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name)) {
+    return { ok: false, error: `Windows에서 예약된 이름이라 쓸 수 없습니다: ${name}` };
+  }
 
   let resolvedBase: string;
   try {

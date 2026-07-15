@@ -147,6 +147,16 @@ describe('scaffoldTeamProject', () => {
     },
   );
 
+  // 6b. Windows reserved device names would create un-deletable folders.
+  it.runIf(process.platform === 'win32').each(['CON', 'con', 'nul', 'COM1', 'lpt9', 'AUX.txt'])(
+    'refuses the Windows reserved name %j and creates nothing',
+    (reserved) => {
+      const result = scaffoldTeamProject('pure-dev', tmpRoot, reserved);
+      expect(result.ok).toBe(false);
+      expect(fs.readdirSync(tmpRoot)).toEqual([]);
+    },
+  );
+
   // 7. A baseDir that doesn't exist is a safe error, not a throw.
   it('rejects a baseDir that does not exist', () => {
     const missingBase = path.join(tmpRoot, 'does-not-exist');
