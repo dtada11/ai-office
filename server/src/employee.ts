@@ -122,16 +122,29 @@ export function leadDisallowedTools(delegation: Delegation | undefined): string[
 const LEAD_GUIDANCE_BLOCK = `## 리드 지침
 너는 팀장이다. 일을 나눠 맡길 땐 반드시 \`list_staff\`로 팀원을 확인하고 \`delegate\`로 팀원에게 시킨 뒤 \`collect\`로 결과를 모아라. 네 세션 안에서 서브에이전트를 직접 만들지 마라 — 우리 사무실의 팀원들이 실제로 일하는 것이 이 도구의 목적이다. 위임 지시에는 팀원이 헛일을 반복하지 않도록 필요한 맥락(무엇을, 어느 폴더 기준으로, 무엇을 확인할지)을 담아라.`;
 
+/** Every employee's first line: who they are and where they stand in the org.
+ *  Without it a staffer has no system prompt at all when they carry no persona,
+ *  so asked "are you the lead?" they just agree. Leads still get the fuller
+ *  LEAD_GUIDANCE_BLOCK on top; this only settles identity. */
+function identityBlock(name: string, isLead: boolean): string {
+  return isLead
+    ? `너는 이 픽셀 사무실의 팀장 '${name}'이다.`
+    : `너는 이 픽셀 사무실의 팀원 '${name}'이다. 팀장이 아니며, 팀장이 위임한 일을 네 담당 폴더 기준으로 처리한다.`;
+}
+
 /** What this employee is told about themselves, on top of the stock prompt —
- *  lead guidance first (delegation only), then whatever the persona editor
- *  added, then a handoff note if they're resuming a shift. Exported bare (no
- *  class needed) so the wiring can be asserted without a real SDK session. */
+ *  who they are first, then lead guidance (delegation only), then whatever the
+ *  persona editor added, then a handoff note if they're resuming a shift.
+ *  Exported bare (no class needed) so the wiring can be asserted without a real
+ *  SDK session. */
 export function buildPromptBlocks(
+  name: string,
   delegation: Delegation | undefined,
   persona: string | undefined,
   handoffNote: string | undefined,
 ): string[] {
   return [
+    identityBlock(name, !!delegation),
     delegation ? LEAD_GUIDANCE_BLOCK : null,
     persona?.trim() ? `## 직원 지침\n${persona.trim()}` : null,
     handoffNote?.trim()
@@ -168,7 +181,7 @@ export class ClaudeEmployee implements Employee {
     const sdk = await importSdk();
     const { query } = sdk;
 
-    const promptBlocks = buildPromptBlocks(delegation, persona, handoffNote);
+    const promptBlocks = buildPromptBlocks(this.name, delegation, persona, handoffNote);
     const disallowedTools = leadDisallowedTools(delegation);
     const systemPrompt = promptBlocks.length
       ? {
