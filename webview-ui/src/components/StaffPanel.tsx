@@ -1,12 +1,34 @@
 import { useState } from 'react';
 
+import { findTeamTemplate, TEAM_TEMPLATES } from '../../../core/src/teamTemplates.js';
 import type { EmployeeInfo, OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
 import { applyJobPreset, JOB_PRESETS } from '../jobPresets.js';
 import { MODEL_OPTIONS } from '../models.js';
+import { buildScaffoldPreview } from '../teamScaffoldPreview.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
 import { type PickedMode, ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
+
+/** One suggested hire the scaffold API proposes for a role, already in the
+ *  hire form's field shape. Re-declared here (rather than imported from the
+ *  server) the same way folderPicker.ts re-declares DirListing/DirEntry --
+ *  the webview only trusts what comes back over the wire from
+ *  POST /api/scaffold-team (server/src/teamScaffold.ts), it never imports
+ *  server code. */
+interface ScaffoldRosterEntry {
+  defaultName: string;
+  org: 'lead' | 'staff';
+  cwd: string;
+  roleLabel: string;
+  persona: string;
+  model: string;
+}
+
+/** Wire shape of POST /api/scaffold-team's response. */
+type ScaffoldApiResult =
+  | { ok: true; projectDir: string; createdDirs: string[]; roster: ScaffoldRosterEntry[] }
+  | { ok: false; error: string };
 
 /** Hire and fire. Hiring starts a session in the given folder and puts a
  *  character in the office; clicking that character opens their chat. An employee
@@ -22,13 +44,14 @@ interface StaffPanelProps {
   onOpenPersona: (agentId: number) => void;
 }
 
-type StaffTabId = 'roster' | 'hire';
+type StaffTabId = 'roster' | 'hire' | 'scaffold';
 
 /** Adding a tab later is one entry here (plus its content block below) — no
  *  router or tab-context library, there are only ever a couple of these. */
 const STAFF_TABS: { id: StaffTabId; label: string }[] = [
   { id: 'roster', label: '직원 목록' },
   { id: 'hire', label: '새 직원 고용' },
+  { id: 'scaffold', label: '팀 프로젝트 만들기' },
 ];
 
 /** What an employee's row says they run on. */
@@ -190,6 +213,19 @@ export function StaffPanel({
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
 
+  // "팀 프로젝트 만들기" tab state. Preview is derived (pure, no fetch) from
+  // these on every render; only createScaffold() below touches the network.
+  const [templateKey, setTemplateKey] = useState(TEAM_TEMPLATES[0]?.key ?? '');
+  const [scaffoldBaseDir, setScaffoldBaseDir] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [isScaffoldPickerOpen, setIsScaffoldPickerOpen] = useState(false);
+  const [scaffoldLoading, setScaffoldLoading] = useState(false);
+  const [scaffoldError, setScaffoldError] = useState('');
+  // Non-null once the folders exist -- the suggested roster the user can
+  // pick from to prefill the hire form. Hiring itself still requires the
+  // explicit 고용 click; nothing here starts a session.
+  const [scaffoldRoster, setScaffoldRoster] = useState<ScaffoldRosterEntry[] | null>(null);
+
   // Only the lead may delegate, so there is only ever one of them.
   const hasLead = employees.some((e) => e.role === 'lead');
 
@@ -247,6 +283,53 @@ export function StaffPanel({
   const saveLabel = (agentId: number) => {
     transport.send({ type: 'renameEmployee', agentId, roleLabel: labelDraft.trim() });
     setEditingLabelId(null);
+  };
+
+  const selectedTemplate = findTeamTemplate(templateKey);
+  const scaffoldPreview = selectedTemplate
+    ? buildScaffoldPreview(selectedTemplate, scaffoldBaseDir, projectName)
+    : null;
+
+  // Only fires on the explicit "만들기" click -- nothing before this touches
+  // disk, and this alone doesn't hire anyone either. It just creates folders
+  // and hands back a suggested roster for the hire form below.
+  const createScaffold = () => {
+    if (!selectedTemplate || !scaffoldPreview) return;
+    setScaffoldLoading(true);
+    setScaffoldError('');
+    fetch('/api/scaffold-team', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateKey: selectedTemplate.key,
+        baseDir: scaffoldBaseDir.trim(),
+        projectName: projectName.trim(),
+      }),
+    })
+      .then((res) => res.json() as Promise<ScaffoldApiResult>)
+      .then((result) => {
+        if (result.ok) {
+          setScaffoldRoster(result.roster);
+        } else {
+          setScaffoldError(result.error);
+        }
+      })
+      .catch(() => setScaffoldError('요청에 실패했습니다.'))
+      .finally(() => setScaffoldLoading(false));
+  };
+
+  // Copies one suggested hire into the hire form and switches to it for
+  // review -- the user still has to press 고용 themselves; this never opens
+  // a session on its own.
+  const fillFromRosterEntry = (entry: ScaffoldRosterEntry) => {
+    setName(entry.defaultName);
+    setCwd(entry.cwd);
+    setJobId('');
+    setRoleLabel(entry.roleLabel);
+    setPersona(entry.persona);
+    setHireModel(entry.model);
+    setIsLead(entry.org === 'lead' && !hasLead);
+    setActiveTab('hire');
   };
 
   if (!isOpen) return null;
@@ -402,10 +485,132 @@ export function StaffPanel({
         </div>
       )}
 
+      {activeTab === 'scaffold' && (
+        <div className="flex flex-col gap-4">
+          <select
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={templateKey}
+            onChange={(e) => {
+              setTemplateKey(e.target.value);
+              setScaffoldRoster(null);
+              setScaffoldError('');
+            }}
+            title="폴더 구조와 팀 구성이 이 템플릿에 따라 만들어집니다."
+            data-testid="scaffold-template"
+          >
+            {TEAM_TEMPLATES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex gap-2">
+            <input
+              className="flex-1 min-w-0 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+              value={scaffoldBaseDir}
+              onChange={(e) => setScaffoldBaseDir(e.target.value)}
+              placeholder="베이스 폴더 (절대 경로) — 여기에 프로젝트 폴더를 만듭니다"
+              data-testid="scaffold-basedir"
+            />
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setIsScaffoldPickerOpen(true)}
+              data-testid="scaffold-basedir-browse"
+            >
+              불러오기
+            </Button>
+          </div>
+
+          <input
+            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            placeholder="프로젝트 이름 (예: my-app)"
+            data-testid="scaffold-project-name"
+          />
+
+          {scaffoldPreview && (
+            <div
+              className="flex flex-col gap-2 border-2 border-border p-6 bg-bg-dark"
+              data-testid="scaffold-preview"
+            >
+              <span className="text-2xs text-text-muted">만들어질 폴더</span>
+              {scaffoldPreview.dirs.map((d) => (
+                <span key={d} className="font-mono text-2xs">
+                  {d}
+                </span>
+              ))}
+              <span className="text-2xs text-text-muted mt-4">팀 구성</span>
+              {scaffoldPreview.roster.map((r) => (
+                <span key={r.cwd} className="text-2xs">
+                  {r.roleLabel} ({r.org === 'lead' ? '팀장' : '팀원'}) — {r.cwd}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {scaffoldError && (
+            <span className="text-2xs text-status-permission" data-testid="scaffold-error">
+              {scaffoldError}
+            </span>
+          )}
+
+          <Button
+            variant={!scaffoldPreview || scaffoldLoading ? 'disabled' : 'accent'}
+            size="sm"
+            disabled={!scaffoldPreview || scaffoldLoading}
+            onClick={createScaffold}
+            data-testid="scaffold-create"
+          >
+            {scaffoldLoading ? '만드는 중…' : '만들기'}
+          </Button>
+
+          {scaffoldRoster && (
+            <div className="flex flex-col gap-2 border-t-2 border-border pt-4">
+              <span className="text-xs text-text-muted">
+                생성 완료 — 아래에서 고용 폼에 채운 뒤 검토하고 고용하세요.
+              </span>
+              {scaffoldRoster.map((entry, i) => (
+                <div
+                  key={`${entry.cwd}-${i}`}
+                  className="flex items-center justify-between gap-4 border-2 border-border p-4"
+                  data-testid={`scaffold-roster-entry-${i}`}
+                >
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs">{entry.roleLabel}</span>
+                    <span
+                      className="font-mono text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap"
+                      title={entry.cwd}
+                    >
+                      {entry.cwd}
+                    </span>
+                  </div>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => fillFromRosterEntry(entry)}
+                    data-testid={`scaffold-fill-${i}`}
+                  >
+                    고용 폼에 채우기
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <FolderPicker
         isOpen={isFolderPickerOpen}
         onClose={() => setIsFolderPickerOpen(false)}
         onSelect={setCwd}
+      />
+      <FolderPicker
+        isOpen={isScaffoldPickerOpen}
+        onClose={() => setIsScaffoldPickerOpen(false)}
+        onSelect={setScaffoldBaseDir}
       />
     </div>
   );

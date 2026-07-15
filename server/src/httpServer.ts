@@ -11,6 +11,7 @@ import type { AssetCache, SetHooksEnabledSideEffect } from './clientMessageHandl
 import { handleClientMessage } from './clientMessageHandler.js';
 import { HOOK_API_PREFIX, MAX_HOOK_BODY_SIZE } from './constants.js';
 import { listDirectory } from './dirLister.js';
+import { scaffoldTeamProject } from './teamScaffold.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -82,6 +83,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
 
   registerHealthRoute(app);
   registerListDirRoute(app);
+  registerScaffoldTeamRoute(app);
   registerHookRoute(app, options);
   registerWebSocketRoute(app, options);
 
@@ -115,6 +117,28 @@ function registerListDirRoute(app: FastifyInstance): void {
   app.get<{ Querystring: { path?: string } }>('/api/list-dir', async (request) => {
     return listDirectory(request.query.path);
   });
+}
+
+/** Creates a new team project folder ("팀 프로젝트 만들기"). Unlike list-dir
+ *  this is a write, but it gets the same no-auth posture: standalone-only,
+ *  local server, and the CORS origin check registered above already keeps a
+ *  malicious webpage's JS from reaching it cross-origin -- the same posture
+ *  the WebSocket write messages (hireEmployee, etc.) already rely on in
+ *  standalone mode. POST because it has a side effect; a plain object body
+ *  (not a core/asyncapi.yaml schema) for the same reason list-dir is a GET
+ *  and not a WebSocket message. */
+function registerScaffoldTeamRoute(app: FastifyInstance): void {
+  app.post<{ Body: { templateKey?: string; baseDir?: string; projectName?: string } }>(
+    '/api/scaffold-team',
+    async (request, reply) => {
+      const { templateKey, baseDir, projectName } = request.body ?? {};
+      if (!templateKey || !baseDir || !projectName) {
+        reply.code(400);
+        return { ok: false, error: '템플릿, 베이스 경로, 프로젝트 이름이 모두 필요합니다.' };
+      }
+      return scaffoldTeamProject(templateKey, baseDir, projectName);
+    },
+  );
 }
 
 // ── Hook Events ────────────────────────────────────────────────
