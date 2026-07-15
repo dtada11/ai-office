@@ -23,6 +23,9 @@ files:
   - adapters/electron/**
   - icon.png
   - package.json
+  # MIT는 배포본에 라이선스·저작권 표시 포함을 요구한다 — 설치 파일만 받은
+  # 사용자에게도 원저작권(Pablo De Lucca)이 딸려가도록 함께 담는다.
+  - LICENSE
 
 win:
   target: nsis
