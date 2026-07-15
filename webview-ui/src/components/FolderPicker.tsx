@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 
-import { confirmedCwd, type DirEntry, type DirListing, nextRequestPath } from '../folderPicker.js';
+import {
+  collapseBreadcrumb,
+  confirmedCwd,
+  type DirEntry,
+  type DirListing,
+  nextRequestPath,
+  pathSegments,
+} from '../folderPicker.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -9,6 +16,24 @@ interface FolderPickerProps {
   onClose: () => void;
   /** Called with the confirmed absolute path when "이 폴더 선택" is clicked. */
   onSelect: (path: string) => void;
+}
+
+/** Folder outline built from straight lines only (no diagonals/curves) to
+ *  match the app's blocky pixel-art tone -- just enough shape to read as
+ *  "this is a folder" next to an entry name, without competing with it. */
+function FolderIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      className="shrink-0 text-text-muted"
+      aria-hidden="true"
+    >
+      <path d="M2 3 H7 V5 H14 V13 H2 Z" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
 }
 
 /** Server-driven folder browser for the hire form's cwd field. The browser's
@@ -51,16 +76,58 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
   const cwd = confirmedCwd(listing);
   const atTop = !listing || listing.parent === null;
 
+  // Root-to-leaf crumbs for the current path, collapsed so a deep path
+  // still reads as "root … parent / here" instead of an unbounded row.
+  const breadcrumb = listing?.path ? collapseBreadcrumb(pathSegments(listing.path)) : [];
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="폴더 불러오기" zIndex={60}>
-      <div className="flex flex-col gap-4 w-96 px-10 pb-4" data-testid="folder-picker">
-        <span
-          className="font-mono text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap"
-          title={listing?.path}
+      <div className="flex flex-col gap-4 w-[400px] px-10 pb-4" data-testid="folder-picker">
+        <div
+          className="flex items-center gap-2 min-w-0 font-mono text-2xs"
           data-testid="folder-picker-path"
         >
-          {listing?.path || '내 컴퓨터'}
-        </span>
+          {breadcrumb.length === 0 ? (
+            <span className="text-text-muted">내 컴퓨터</span>
+          ) : (
+            breadcrumb.map((seg, i) => {
+              const isLast = i === breadcrumb.length - 1;
+              const key = 'ellipsis' in seg ? `ellipsis-${i}` : seg.path;
+              return (
+                <Fragment key={key}>
+                  {i > 0 && (
+                    <span className="shrink-0 text-text-muted" aria-hidden="true">
+                      ›
+                    </span>
+                  )}
+                  {'ellipsis' in seg ? (
+                    <span className="shrink-0 text-text-muted">…</span>
+                  ) : isLast ? (
+                    // Current location: not a link, just where you are.
+                    <span
+                      className="min-w-0 max-w-[14ch] truncate text-text"
+                      title={seg.path}
+                      data-testid="folder-picker-breadcrumb-current"
+                    >
+                      {seg.label}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="min-w-0 max-w-[8ch] shrink truncate cursor-pointer border-none bg-transparent p-0 text-text-muted hover:text-text disabled:cursor-default disabled:hover:text-text-muted"
+                      onClick={() => load(seg.path)}
+                      disabled={loading}
+                      title={seg.path}
+                      data-testid="folder-picker-breadcrumb-segment"
+                    >
+                      {seg.label}
+                    </button>
+                  )}
+                </Fragment>
+              );
+            })
+          )}
+        </div>
 
         <Button
           variant={atTop || loading ? 'disabled' : 'default'}
@@ -73,27 +140,50 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
         </Button>
 
         <div className="flex flex-col border-2 border-border max-h-64 overflow-y-auto">
-          {loading && <span className="text-2xs text-text-muted p-6">불러오는 중…</span>}
+          {loading && (
+            <div className="flex items-center gap-4 p-6" data-testid="folder-picker-loading">
+              <span className="w-6 h-6 rounded-full shrink-0 bg-status-active pixel-pulse" />
+              <span className="text-2xs text-text-muted">불러오는 중…</span>
+            </div>
+          )}
           {!loading && listing?.error && (
-            <span className="text-2xs text-status-permission p-6" data-testid="folder-picker-error">
-              열 수 없음 (존재하지 않거나 권한이 없는 경로입니다)
-            </span>
+            <div className="flex items-center gap-4 p-6" data-testid="folder-picker-error">
+              <span className="w-6 h-6 rounded-full shrink-0 bg-status-permission" />
+              <span className="text-2xs text-status-permission">
+                열 수 없음 (존재하지 않거나 권한이 없는 경로입니다)
+              </span>
+            </div>
           )}
           {!loading && !listing?.error && listing?.entries.length === 0 && (
-            <span className="text-2xs text-text-muted p-6">하위 폴더가 없습니다.</span>
+            <div className="flex items-center gap-4 p-6" data-testid="folder-picker-empty">
+              <span className="w-6 h-6 rounded-full shrink-0 border-2 border-border" />
+              <span className="text-2xs text-text-muted">하위 폴더가 없습니다.</span>
+            </div>
           )}
           {!loading &&
             !listing?.error &&
             listing?.entries.map((entry) => (
               <button
                 key={entry.path}
-                className="text-left text-xs px-6 py-3 rounded-none cursor-pointer bg-transparent border-none hover:bg-btn-hover"
+                className="flex items-center gap-4 text-left text-xs px-6 py-3 rounded-none cursor-pointer bg-transparent border-none hover:bg-btn-hover"
                 onClick={() => goTo(entry)}
                 data-testid="folder-picker-entry"
               >
-                {entry.name}
+                <FolderIcon />
+                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
               </button>
             ))}
+        </div>
+
+        <div className="flex flex-col gap-2" data-testid="folder-picker-selection">
+          <span className="text-2xs text-text-muted">선택할 폴더</span>
+          <span
+            className={`font-mono text-xs truncate ${cwd === null ? 'text-text-muted' : 'text-text'}`}
+            title={cwd ?? undefined}
+            data-testid="folder-picker-selection-path"
+          >
+            {cwd ?? '폴더를 선택하세요'}
+          </span>
         </div>
 
         <Button
