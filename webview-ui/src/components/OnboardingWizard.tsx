@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import type {
   AuthMode,
+  HandoffNotesInfo,
   OfficeProviderInfo,
   SetupCheck,
   SetupCheckResultInfo,
@@ -10,6 +11,7 @@ import type {
 import { setupCheckCopy } from '../setupCheckCopy.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
+import { HandoffNotePicker } from './HandoffNotePicker.js';
 import { ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
@@ -19,6 +21,9 @@ interface OnboardingWizardProps {
   onClose: () => void;
   officeProvider: OfficeProviderInfo | null;
   setupCheckResult: SetupCheckResultInfo | null;
+  /** Answer to the last listHandoffNotes, for offering "resume from" choices
+   *  in step 3's hire form. */
+  handoffNotes: HandoffNotesInfo | null;
 }
 
 const MODE_EXPLANATION: Record<AuthMode, string> = {
@@ -65,6 +70,7 @@ export function OnboardingWizard({
   onClose,
   officeProvider,
   setupCheckResult,
+  handoffNotes,
 }: OnboardingWizardProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [mode, setMode] = useState<AuthMode>(officeProvider?.mode ?? 'subscription');
@@ -72,6 +78,17 @@ export function OnboardingWizard({
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
+  // '' = "없음 (새로 시작)" — the default, plain first-shift hire.
+  const [handoffFromKey, setHandoffFromKey] = useState('');
+
+  const requestHandoffNotes = (path: string) => {
+    if (path.trim()) transport.send({ type: 'listHandoffNotes', cwd: path.trim() });
+  };
+
+  const handleCwdChange = (value: string) => {
+    setCwd(value);
+    setHandoffFromKey('');
+  };
 
   // Every fresh open (first run, or "온보딩 다시 보기") starts clean at step 1 —
   // simpler than trying to resume wherever a previous visit left off.
@@ -107,7 +124,13 @@ export function OnboardingWizard({
     // 'lead' (the only rank that may delegate; the office had nobody before
     // this, so hasLead is always false here). See StaffPanel.hire() for the
     // same rule applied to every later hire.
-    transport.send({ type: 'hireEmployee', name: name.trim(), cwd: cwd.trim(), role: 'lead' });
+    transport.send({
+      type: 'hireEmployee',
+      name: name.trim(),
+      cwd: cwd.trim(),
+      role: 'lead',
+      ...(handoffFromKey ? { handoffFromKey } : {}),
+    });
     finish();
   };
 
@@ -194,7 +217,8 @@ export function OnboardingWizard({
                 <input
                   className="flex-1 min-w-0 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
                   value={cwd}
-                  onChange={(e) => setCwd(e.target.value)}
+                  onChange={(e) => handleCwdChange(e.target.value)}
+                  onBlur={(e) => requestHandoffNotes(e.target.value)}
                   placeholder="담당 폴더 (절대 경로)"
                   data-testid="onboarding-hire-cwd"
                 />
@@ -202,6 +226,13 @@ export function OnboardingWizard({
                   불러오기
                 </Button>
               </div>
+              <HandoffNotePicker
+                cwd={cwd}
+                handoffNotes={handoffNotes}
+                value={handoffFromKey}
+                onChange={setHandoffFromKey}
+                groupName="onboarding-hire-handoff"
+              />
               <div className="flex gap-4 pt-4">
                 <Button
                   variant={name.trim() && cwd.trim() ? 'accent' : 'disabled'}
@@ -224,7 +255,8 @@ export function OnboardingWizard({
         isOpen={isFolderPickerOpen}
         onClose={() => setIsFolderPickerOpen(false)}
         onSelect={(path) => {
-          setCwd(path);
+          handleCwdChange(path);
+          requestHandoffNotes(path);
           setIsFolderPickerOpen(false);
         }}
       />

@@ -108,6 +108,7 @@ components:
         - $ref: '#/components/schemas/AgentSessionEvent'
         - $ref: '#/components/schemas/AgentPermissionRequest'
         - $ref: '#/components/schemas/AgentPermissionResolved'
+        - $ref: '#/components/schemas/HandoffNotesListed'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -152,6 +153,7 @@ components:
         - $ref: '#/components/schemas/KillShellCommand'
         - $ref: '#/components/schemas/HireEmployee'
         - $ref: '#/components/schemas/FireEmployee'
+        - $ref: '#/components/schemas/ListHandoffNotes'
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/SetAgentModel'
         - $ref: '#/components/schemas/RenameEmployee'
@@ -1009,6 +1011,39 @@ components:
           items:
             $ref: '#/components/schemas/SetupCheck'
 
+    HandoffNoteSummary:
+      description: One employee's most recent handoff note, as offered in a "resume from" picker.
+      type: object
+      additionalProperties: false
+      required: [key, employee, savedAt]
+      properties:
+        key:
+          type: string
+          description: Handoff folder key (see getHandoffDir) — pass back as hireEmployee's handoffFromKey.
+        employee:
+          type: string
+          description: Name of the employee who wrote this note (from its frontmatter).
+        savedAt:
+          type: string
+          description: ISO timestamp the note was saved (from its frontmatter).
+
+    HandoffNotesListed:
+      description: |
+        Response to listHandoffNotes. Sent to the requesting client only —
+        never broadcast, since two clients could be browsing different cwds.
+      type: object
+      additionalProperties: false
+      required: [type, cwd, notes]
+      properties:
+        type:
+          const: handoffNotesListed
+        cwd:
+          type: string
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HandoffNoteSummary'
+
     OfficeNoticeLevel:
       type: string
       enum: [info, error]
@@ -1227,6 +1262,14 @@ components:
           description: |
             The model to hire them on. Omitted = the office default at hire time.
             A preset recommends one per job, but the user may override it.
+        handoffFromKey:
+          type: string
+          description: |
+            Resume from another (or the same) employee's most recent handoff
+            note, read directly from that folder key (see HandoffNoteSummary.key,
+            from listHandoffNotes/handoffNotesListed) — so a differently-named
+            hire can pick up where someone else left off. Omitted = a plain
+            first-shift start with no note.
 
     FireEmployee:
       description: End an employee's session and remove their character.
@@ -1238,6 +1281,25 @@ components:
           const: fireEmployee
         agentId:
           type: integer
+        deleteHandoff:
+          type: boolean
+          description: |
+            Also delete this employee's handoff notes from disk. Omitted/false
+            keeps them, so a later hire can offer to resume from them.
+
+    ListHandoffNotes:
+      description: |
+        Ask which handoff notes exist under a cwd, so a hire form can offer
+        them as "resume from" choices. Answered with handoffNotesListed, sent
+        to this client only.
+      type: object
+      additionalProperties: false
+      required: [type, cwd]
+      properties:
+        type:
+          const: listHandoffNotes
+        cwd:
+          type: string
 
     SendAgentMessage:
       description: Send one user message to a specific employee.

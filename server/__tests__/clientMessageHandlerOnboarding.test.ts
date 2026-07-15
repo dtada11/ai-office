@@ -23,6 +23,7 @@ vi.mock('../src/employees.js', () => ({
   fireEmployee: vi.fn(),
   getPendingPermissionRequests: vi.fn(() => []),
   isEmployee: vi.fn(() => false),
+  listHandoffNotes: vi.fn(() => []),
   renameEmployee: vi.fn(),
   resolveEmployeePermission: vi.fn(),
   sendStaffTo: vi.fn(),

@@ -529,6 +529,16 @@ function handoffKey(name: string): string {
   return safe ? `${safe}-${hash}` : hash;
 }
 
+/** Resolve a handoff-note folder from a client-supplied key, but only if it is a
+ *  direct child of this cwd's handoff dir. The key arrives over the wire (a hire
+ *  form's "resume from" pick), so a value like '..\\..\\secrets' must not read
+ *  notes out of an arbitrary directory. Returns null when the key would escape. */
+function resolveHandoffDir(cwd: string, key: string): string | null {
+  const base = path.resolve(cwd, '.ai-office', 'handoff');
+  const target = path.resolve(base, key);
+  return path.dirname(target) === base ? target : null;
+}
+
 /** Notes are named after when they were saved, so a plain sort orders them —
  *  and Windows forbids ':' in filenames, hence the hyphens. */
 function handoffFileName(): string {
@@ -540,11 +550,10 @@ function stripFrontmatter(raw: string): string {
   return (match ? raw.slice(match[0].length) : raw).trim();
 }
 
-/** The most recent handoff note's body (frontmatter stripped), or null if this
- *  employee has never clocked out — or the user deleted their notes — either of
- *  which is a normal, first-shift-like start. */
-function readLatestHandoffNote(cwd: string, name: string): string | null {
-  const dir = getHandoffDir(cwd, name);
+/** The most recently saved note's filename in a handoff folder, or null if it
+ *  has none (never written to, or the user cleared it) — shared by every
+ *  reader below, so "which file is latest" is decided in exactly one place. */
+function findLatestHandoffFile(dir: string): string | null {
   let files: string[];
   try {
     files = fs
@@ -554,13 +563,86 @@ function readLatestHandoffNote(cwd: string, name: string): string | null {
   } catch {
     return null;
   }
-  const latest = files[files.length - 1];
+  return files[files.length - 1] ?? null;
+}
+
+/** The most recent handoff note's body (frontmatter stripped) in a given
+ *  folder, or null if it holds no readable note — either the folder never got
+ *  written to, or something in it can't be read. `readLatestHandoffNote` (the
+ *  by-name entry point used at clockIn) and `hireEmployee`'s by-key resume both
+ *  wrap this — one and the same file-reading logic either way. */
+function readLatestHandoffNoteFromDir(dir: string): string | null {
+  const latest = findLatestHandoffFile(dir);
   if (!latest) return null;
   try {
     return stripFrontmatter(fs.readFileSync(path.join(dir, latest), 'utf8'));
   } catch {
     return null;
   }
+}
+
+/** The most recent handoff note's body (frontmatter stripped), or null if this
+ *  employee has never clocked out — or the user deleted their notes — either of
+ *  which is a normal, first-shift-like start. */
+function readLatestHandoffNote(cwd: string, name: string): string | null {
+  return readLatestHandoffNoteFromDir(getHandoffDir(cwd, name));
+}
+
+/** employee:/savedAt: out of a handoff note's frontmatter — just enough to list
+ *  notes as "resume from" choices without reading the whole file into a doc
+ *  model. Returns null when either field is missing (a note we can't summarize
+ *  is a note listHandoffNotes should skip, not show blank). */
+function parseHandoffFrontmatter(raw: string): { employee: string; savedAt: string } | null {
+  const match = /^---\n([\s\S]*?)\n---/.exec(raw);
+  if (!match) return null;
+  const employee = /^employee:\s*(.+)$/m.exec(match[1])?.[1]?.trim();
+  const savedAt = /^savedAt:\s*(.+)$/m.exec(match[1])?.[1]?.trim();
+  if (!employee || !savedAt) return null;
+  return { employee, savedAt };
+}
+
+/** Like readLatestHandoffNoteFromDir, but the raw file (frontmatter and all) —
+ *  listHandoffNotes needs the frontmatter itself, not the stripped body. */
+function readLatestHandoffNoteRawFromDir(dir: string): string | null {
+  const latest = findLatestHandoffFile(dir);
+  if (!latest) return null;
+  try {
+    return fs.readFileSync(path.join(dir, latest), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** Every employee folder's most recent handoff note under a cwd, newest first —
+ *  what a hire form offers as "resume from" choices (see hireEmployee's
+ *  handoffFromKey). Keyed by folder (see getHandoffDir), not by name: this is
+ *  what lets a differently-named hire pick up someone else's notes directly.
+ *  Empty array when the cwd has no handoff dir yet, or nothing in it parses. */
+export function listHandoffNotes(
+  cwd: string,
+): { key: string; employee: string; savedAt: string }[] {
+  const baseDir = path.join(cwd, '.ai-office', 'handoff');
+  let keys: string[];
+  try {
+    keys = fs
+      .readdirSync(baseDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    return [];
+  }
+
+  const notes: { key: string; employee: string; savedAt: string }[] = [];
+  for (const key of keys) {
+    const raw = readLatestHandoffNoteRawFromDir(path.join(baseDir, key));
+    if (raw === null) continue;
+    const parsed = parseHandoffFrontmatter(raw);
+    if (!parsed) continue;
+    notes.push({ key, ...parsed });
+  }
+
+  notes.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
+  return notes;
 }
 
 /** Oldest-first cleanup past MAX_HANDOFF_NOTES — simple and predictable, per the
@@ -764,8 +846,29 @@ export async function hireEmployee(
    *  brand-new hire — the webview picks one and reports it back via saveAgentSeats. */
   palette?: number,
   hueShift?: number,
+  /** Resume from another (or the same) employee's most recent handoff note,
+   *  read directly by folder key (see listHandoffNotes) — so a differently-named
+   *  hire can pick up where someone else left off. Omitted = a plain
+   *  first-shift start with no note. */
+  handoffFromKey?: string,
 ): Promise<number | undefined> {
   if (!name.trim() || !cwd.trim()) return undefined;
+
+  // The name doubles as the handoff key and the thing delegate() looks staff up
+  // by, so two employees sharing one would blur both — office-wide, on or off
+  // duty, regardless of cwd. rehireSavedEmployees() also calls hireEmployee and
+  // so also passes through this same check — harmless, since the roster it
+  // replays was itself built under this guard and can never hold a duplicate
+  // name to begin with.
+  const trimmedName = name.trim();
+  if ([...staff.values()].some((s) => s.name === trimmedName)) {
+    store.broadcast({
+      type: 'officeNotice',
+      level: 'error',
+      text: `이미 "${trimmedName}" 직원이 있습니다. 다른 이름을 쓰세요.`,
+    });
+    return undefined;
+  }
 
   // The character comes first: it gives us the agentId everything else is keyed by,
   // and the office shows the employee as soon as they are hired.
@@ -807,7 +910,19 @@ export async function hireEmployee(
     palette,
     hueShift,
   });
-  await employee.start(model, role === 'lead' ? delegationFor(store) : undefined, persona);
+  // Read directly from the given folder key, not this employee's own name — the
+  // whole point is that a brand-new (possibly differently-named) hire can pick
+  // up a note anyone left behind.
+  const handoffDir = handoffFromKey ? resolveHandoffDir(cwd, handoffFromKey) : null;
+  const handoffNote = handoffDir
+    ? (readLatestHandoffNoteFromDir(handoffDir) ?? undefined)
+    : undefined;
+  await employee.start(
+    model,
+    role === 'lead' ? delegationFor(store) : undefined,
+    persona,
+    handoffNote,
+  );
   broadcastStaff(store);
   saveStaff();
   console.log(
@@ -820,15 +935,25 @@ export function fireEmployee(
   store: AgentStateStore,
   agentId: number,
   runtime?: AgentRuntime,
+  /** Also delete this employee's handoff notes from disk. Omitted/false keeps
+   *  them — clockOut's notes always survive fire unless the user asks for
+   *  this explicitly, so a later hire can still offer to resume from them. */
+  deleteHandoff?: boolean,
 ): void {
   const current = staff.get(agentId);
   if (!current) return;
+  // Captured before the roster entry goes away — deleting the handoff dir
+  // below needs both, and current is gone from `staff` a few lines from now.
+  const { cwd, name } = current;
   // Same reasoning as finishHandoff(): before the character disappears, or the
   // external scanner ghost-readopts the now-untracked transcript.
   dismissEmployeeSession(runtime, current);
   current.employee?.stop();
   store.delete(agentId);
   staff.delete(agentId);
+  if (deleteHandoff) {
+    fs.rmSync(getHandoffDir(cwd, name), { recursive: true, force: true });
+  }
   broadcastStaff(store);
   saveStaff();
   console.log(`[Pixel Agents] Fired agent ${agentId}`);

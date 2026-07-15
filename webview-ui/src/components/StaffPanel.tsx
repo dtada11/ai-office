@@ -1,14 +1,20 @@
 import { useState } from 'react';
 
 import { findTeamTemplate, TEAM_TEMPLATES } from '../../../core/src/teamTemplates.js';
-import type { EmployeeInfo, OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
+import type {
+  EmployeeInfo,
+  HandoffNotesInfo,
+  OfficeProviderInfo,
+} from '../hooks/useExtensionMessages.js';
 import { applyJobPreset, JOB_PRESETS } from '../jobPresets.js';
 import { MODEL_OPTIONS } from '../models.js';
 import { buildScaffoldPreview } from '../teamScaffoldPreview.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
+import { HandoffNotePicker } from './HandoffNotePicker.js';
 import { type PickedMode, ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
+import { Modal } from './ui/Modal.js';
 
 /** One suggested hire the scaffold API proposes for a role, already in the
  *  hire form's field shape. Re-declared here (rather than imported from the
@@ -42,6 +48,9 @@ interface StaffPanelProps {
   onClose: () => void;
   /** Open (or focus, if already open) that employee's persona editor window. */
   onOpenPersona: (agentId: number) => void;
+  /** Answer to the last listHandoffNotes, for offering "resume from" choices
+   *  in the hire form. */
+  handoffNotes: HandoffNotesInfo | null;
 }
 
 type StaffTabId = 'roster' | 'hire' | 'scaffold';
@@ -97,6 +106,9 @@ interface EmployeeRowProps {
   onSaveLabel: () => void;
   onCancelEditingLabel: () => void;
   onOpenPersona: () => void;
+  /** Opens the keep/delete confirm instead of firing immediately (see
+   *  fireConfirm state in StaffPanel). */
+  onRequestFire: () => void;
 }
 
 function EmployeeRow({
@@ -108,6 +120,7 @@ function EmployeeRow({
   onSaveLabel,
   onCancelEditingLabel,
   onOpenPersona,
+  onRequestFire,
 }: EmployeeRowProps) {
   return (
     <div
@@ -184,7 +197,7 @@ function EmployeeRow({
           variant="ghost"
           size="sm"
           className="hover:text-danger!"
-          onClick={() => transport.send({ type: 'fireEmployee', agentId: e.agentId })}
+          onClick={onRequestFire}
           title="세션 종료 후 퇴장"
         >
           해임
@@ -200,6 +213,7 @@ export function StaffPanel({
   isOpen,
   onClose,
   onOpenPersona,
+  handoffNotes,
 }: StaffPanelProps) {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
@@ -212,10 +226,18 @@ export function StaffPanel({
   const [secret, setSecret] = useState('');
   const [activeTab, setActiveTab] = useState<StaffTabId>('roster');
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
+  // '' = "없음 (새로 시작)" — the default, plain first-shift hire.
+  const [handoffFromKey, setHandoffFromKey] = useState('');
 
   // Which employee's title is being edited inline, and the draft text for it.
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
+
+  // Set on 해임 click, cleared on either confirm choice or the modal's own
+  // close -- the actual fireEmployee send waits for keep/delete, so a stray
+  // click never ends a session before the user has chosen what happens to
+  // its notes.
+  const [fireTarget, setFireTarget] = useState<{ agentId: number; name: string } | null>(null);
 
   // "팀 프로젝트 만들기" tab state. Preview is derived (pure, no fetch) from
   // these on every render; only createScaffold() below touches the network.
@@ -233,6 +255,12 @@ export function StaffPanel({
   // Only the lead may delegate, so there is only ever one of them.
   const hasLead = employees.some((e) => e.role === 'lead');
 
+  // UX-preemptive only — the server is the true gate (office-wide, on/off
+  // duty, any cwd), since it's also the one guarding rehireSavedEmployees'
+  // own roster. This just keeps the button from looking clickable when it
+  // would only bounce off an officeNotice.
+  const nameTaken = name.trim() !== '' && employees.some((e) => e.name === name.trim());
+
   // Picking a job overwrites the title/instructions/model drafts with that
   // preset's values — simple, not merged. The user can still edit any of them
   // by hand afterward; picking a job again overwrites again.
@@ -245,8 +273,20 @@ export function StaffPanel({
     setHireModel(fields.model);
   };
 
+  // The hire form's cwd is what decides which folder's notes could be resumed
+  // from — ask the server once it's set (typing further resets the pick below
+  // via handleCwdChange, so a stale key never rides along to a different cwd).
+  const requestHandoffNotes = (path: string) => {
+    if (path.trim()) transport.send({ type: 'listHandoffNotes', cwd: path.trim() });
+  };
+
+  const handleCwdChange = (value: string) => {
+    setCwd(value);
+    setHandoffFromKey('');
+  };
+
   const hire = () => {
-    if (!name.trim() || !cwd.trim()) return;
+    if (!name.trim() || !cwd.trim() || nameTaken) return;
     // A key mode with nothing typed would hire an employee who cannot
     // authenticate — there is no stored per-employee secret to fall back on.
     if (mode === 'apiKey' && !secret.trim()) return;
@@ -267,6 +307,7 @@ export function StaffPanel({
       ...(roleLabel.trim() ? { roleLabel: roleLabel.trim() } : {}),
       ...(persona.trim() ? { persona: persona.trim() } : {}),
       ...(hireModel ? { model: hireModel } : {}),
+      ...(handoffFromKey ? { handoffFromKey } : {}),
     });
     setName('');
     setCwd('');
@@ -277,6 +318,7 @@ export function StaffPanel({
     setIsLead(false);
     setMode('office');
     setSecret('');
+    setHandoffFromKey('');
   };
 
   const startEditingLabel = (e: EmployeeInfo) => {
@@ -291,9 +333,12 @@ export function StaffPanel({
 
   // Mirrors the guard inside hire() itself -- surfaced here so the button can
   // look disabled instead of silently doing nothing when required fields (or,
-  // in key mode, the key) are missing.
+  // in key mode, the key) are missing -- or the name is already taken.
   const hireReady =
-    name.trim() !== '' && cwd.trim() !== '' && (mode !== 'apiKey' || secret.trim() !== '');
+    name.trim() !== '' &&
+    cwd.trim() !== '' &&
+    !nameTaken &&
+    (mode !== 'apiKey' || secret.trim() !== '');
 
   const selectedTemplate = findTeamTemplate(templateKey);
   const scaffoldPreview = selectedTemplate
@@ -339,6 +384,8 @@ export function StaffPanel({
     setPersona(entry.persona);
     setHireModel(entry.model);
     setIsLead(entry.org === 'lead' && !hasLead);
+    setHandoffFromKey('');
+    requestHandoffNotes(entry.cwd);
     setActiveTab('hire');
   };
 
@@ -384,6 +431,7 @@ export function StaffPanel({
                 onSaveLabel={() => saveLabel(e.agentId)}
                 onCancelEditingLabel={() => setEditingLabelId(null)}
                 onOpenPersona={() => onOpenPersona(e.agentId)}
+                onRequestFire={() => setFireTarget({ agentId: e.agentId, name: e.name })}
               />
             ))}
           </div>
@@ -401,11 +449,17 @@ export function StaffPanel({
             placeholder="이름 (필수 · 예: 비서)"
             data-testid="hire-name"
           />
+          {nameTaken && (
+            <span className="text-2xs text-status-error" data-testid="hire-name-taken">
+              이미 있는 이름입니다.
+            </span>
+          )}
           <div className="flex gap-2">
             <input
               className="flex-1 min-w-0 bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
               value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
+              onChange={(e) => handleCwdChange(e.target.value)}
+              onBlur={(e) => requestHandoffNotes(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') hire();
               }}
@@ -421,6 +475,13 @@ export function StaffPanel({
               불러오기
             </Button>
           </div>
+          <HandoffNotePicker
+            cwd={cwd}
+            handoffNotes={handoffNotes}
+            value={handoffFromKey}
+            onChange={setHandoffFromKey}
+            groupName="staff-hire-handoff"
+          />
           <div className="flex flex-col gap-2">
             <span className="text-2xs text-text-muted">
               직무 프리셋 (선택 · 고르면 아래 직함·지침·모델이 채워져요)
@@ -639,13 +700,64 @@ export function StaffPanel({
       <FolderPicker
         isOpen={isFolderPickerOpen}
         onClose={() => setIsFolderPickerOpen(false)}
-        onSelect={setCwd}
+        onSelect={(path) => {
+          handleCwdChange(path);
+          requestHandoffNotes(path);
+        }}
       />
       <FolderPicker
         isOpen={isScaffoldPickerOpen}
         onClose={() => setIsScaffoldPickerOpen(false)}
         onSelect={setScaffoldBaseDir}
       />
+
+      <Modal
+        isOpen={fireTarget !== null}
+        onClose={() => setFireTarget(null)}
+        title="해임 확인"
+        zIndex={55}
+      >
+        <div className="flex flex-col gap-8 px-10 pb-6 min-w-sm">
+          <span className="text-sm text-text-muted">
+            {fireTarget?.name}의 인수인계 기록을 어떻게 할까요?
+          </span>
+          <div className="flex gap-4">
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => {
+                if (!fireTarget) return;
+                transport.send({
+                  type: 'fireEmployee',
+                  agentId: fireTarget.agentId,
+                  deleteHandoff: false,
+                });
+                setFireTarget(null);
+              }}
+              data-testid="fire-confirm-keep"
+            >
+              남기기
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hover:text-danger!"
+              onClick={() => {
+                if (!fireTarget) return;
+                transport.send({
+                  type: 'fireEmployee',
+                  agentId: fireTarget.agentId,
+                  deleteHandoff: true,
+                });
+                setFireTarget(null);
+              }}
+              data-testid="fire-confirm-delete"
+            >
+              삭제하고 해임
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

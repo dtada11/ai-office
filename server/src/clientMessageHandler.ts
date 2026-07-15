@@ -12,6 +12,7 @@ import {
   getPendingPermissionRequests,
   hireEmployee,
   isEmployee,
+  listHandoffNotes,
   renameEmployee,
   resolveEmployeePermission,
   sendStaffTo,
@@ -240,6 +241,9 @@ export function handleClientMessage(
         msg.provider as EmployeeProvider | undefined,
         msg.roleLabel as string | undefined,
         msg.persona as string | undefined,
+        undefined, // palette — brand-new interactive hire, not a rehire
+        undefined, // hueShift — same
+        msg.handoffFromKey as string | undefined,
       ).catch((err) => {
         console.error('[Pixel Agents] hire failed:', err);
         store.broadcast({
@@ -271,7 +275,15 @@ export function handleClientMessage(
     }
 
     case 'fireEmployee':
-      fireEmployee(store, msg.agentId as number, runtime);
+      fireEmployee(store, msg.agentId as number, runtime, msg.deleteHandoff as boolean | undefined);
+      break;
+
+    case 'listHandoffNotes':
+      send({
+        type: 'handoffNotesListed',
+        cwd: msg.cwd as string,
+        notes: listHandoffNotes(msg.cwd as string),
+      });
       break;
 
     case 'sendAgentMessage':

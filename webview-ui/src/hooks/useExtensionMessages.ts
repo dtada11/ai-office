@@ -108,6 +108,9 @@ interface ExtensionMessageState {
   officeNotice: OfficeNoticeInfo | null;
   /** Dismiss the current office notice. */
   clearOfficeNotice: () => void;
+  /** Answer to the last listHandoffNotes, for the cwd it was asked about. Null
+   *  until the first answer arrives. */
+  handoffNotes: HandoffNotesInfo | null;
 }
 
 export type AuthMode = 'subscription' | 'apiKey';
@@ -125,6 +128,24 @@ export interface SetupCheckResultInfo {
 export interface OfficeNoticeInfo {
   level: 'info' | 'error';
   text: string;
+}
+
+/** One employee's most recent handoff note, offered as a "resume from" choice
+ *  in the hire form. `key` is the handoff folder key — pass it back as
+ *  hireEmployee's handoffFromKey, unchanged. */
+export interface HandoffNoteInfo {
+  key: string;
+  employee: string;
+  savedAt: string;
+}
+
+/** Result of the last listHandoffNotes for one cwd. Single slot, like
+ *  setupCheckResult — a hire form checks `cwd` still matches before trusting
+ *  `notes`, so a stale answer for a folder the user has since changed away
+ *  from never gets shown. */
+export interface HandoffNotesInfo {
+  cwd: string;
+  notes: HandoffNoteInfo[];
 }
 
 export interface EmployeeInfo {
@@ -230,6 +251,7 @@ export function useExtensionMessages(
   const [onboardingDone, setOnboardingDone] = useState(true);
   const [setupCheckResult, setSetupCheckResult] = useState<SetupCheckResultInfo | null>(null);
   const [officeNotice, setOfficeNotice] = useState<OfficeNoticeInfo | null>(null);
+  const [handoffNotes, setHandoffNotes] = useState<HandoffNotesInfo | null>(null);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -677,6 +699,11 @@ export function useExtensionMessages(
           level: msg.level as 'info' | 'error',
           text: msg.text as string,
         });
+      } else if (msg.type === 'handoffNotesListed') {
+        setHandoffNotes({
+          cwd: msg.cwd as string,
+          notes: msg.notes as HandoffNoteInfo[],
+        });
       } else if (msg.type === 'externalAssetDirectoriesUpdated') {
         if (Array.isArray(msg.dirs)) {
           setExternalAssetDirectories(msg.dirs as string[]);
@@ -864,5 +891,6 @@ export function useExtensionMessages(
     setupCheckResult,
     officeNotice,
     clearOfficeNotice,
+    handoffNotes,
   };
 }

@@ -17,6 +17,7 @@ import {
   getHandoffDir,
   getPendingPermissionRequests,
   hireEmployee,
+  listHandoffNotes,
   rehireSavedEmployees,
   renameEmployee,
   resolveEmployeePermission,
@@ -984,6 +985,257 @@ describe('employees', () => {
           employees: [expect.objectContaining({ agentId: 1, duty: 'off' })],
         }),
       );
+    });
+  });
+
+  describe('이름 중복 방지 (hireEmployee)', () => {
+    it('같은 이름이 이미 있으면 거부하고 officeNotice를 보낸다(다른 cwd라도)', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      const result = await hireEmployee(store, '코더', '/other-project', 'staff', SONNET);
+
+      expect(result).toBeUndefined();
+      expect(created).toHaveLength(1); // 두 번째 세션은 시작되지 않았다
+      expect(broadcasts).toContainEqual({
+        type: 'officeNotice',
+        level: 'error',
+        text: '이미 "코더" 직원이 있습니다. 다른 이름을 쓰세요.',
+      });
+    });
+
+    it('퇴근(off-duty) 상태의 동명이인도 막는다 — on/off 무관', async () => {
+      vi.mocked(readEmployees).mockReturnValueOnce([
+        { name: '코더', cwd: '/work', role: 'staff', offDuty: true },
+      ]);
+      await rehireSavedEmployees(store, SONNET);
+
+      const result = await hireEmployee(store, '코더', '/other-project', 'staff', SONNET);
+
+      expect(result).toBeUndefined();
+      expect(created).toHaveLength(0);
+    });
+
+    it('거부되어도 명부는 늘어나지 않는다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      await hireEmployee(store, '코더', '/other-project', 'staff', SONNET);
+
+      expect(savedRoster()).toHaveLength(1);
+    });
+
+    it('다른 이름이면(같은 cwd라도) 정상적으로 고용된다', async () => {
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+
+      const result = await hireEmployee(store, '검증', '/work', 'staff', SONNET);
+
+      expect(result).toBe(2);
+      expect(created).toHaveLength(2);
+    });
+  });
+
+  // Handoff notes hit the real filesystem — see the 'duty' describe above for
+  // why these use a real temp cwd rather than the fake '/work' the other
+  // tests use.
+  describe('fireEmployee(deleteHandoff)', () => {
+    let tmpCwd: string;
+
+    beforeEach(() => {
+      tmpCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-office-fire-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    it('deleteHandoff: true면 그 직원의 handoff 폴더를 삭제한다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '오늘 한 일' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+      const dir = getHandoffDir(tmpCwd, '코더');
+      expect(fs.existsSync(dir)).toBe(true);
+
+      fireEmployee(store, 1, undefined, true);
+
+      expect(fs.existsSync(dir)).toBe(false);
+    });
+
+    it('deleteHandoff 생략(기본값)이면 노트가 유지된다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '오늘 한 일' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+      const dir = getHandoffDir(tmpCwd, '코더');
+      expect(fs.existsSync(dir)).toBe(true);
+
+      fireEmployee(store, 1);
+
+      expect(fs.existsSync(dir)).toBe(true);
+    });
+
+    it('deleteHandoff: false를 명시해도 노트가 유지된다', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '오늘 한 일' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+      const dir = getHandoffDir(tmpCwd, '코더');
+
+      fireEmployee(store, 1, undefined, false);
+
+      expect(fs.existsSync(dir)).toBe(true);
+    });
+  });
+
+  describe('listHandoffNotes', () => {
+    let tmpCwd: string;
+
+    beforeEach(() => {
+      tmpCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-office-list-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    it('handoff 폴더 자체가 없으면 빈 배열을 반환한다', () => {
+      expect(listHandoffNotes(tmpCwd)).toEqual([]);
+    });
+
+    it('하위 폴더들의 최신 노트 frontmatter를 savedAt 내림차순으로 반환한다', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+        await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+        clockOut(store, 1);
+        created[0].emit({ kind: 'text', text: '코더의 노트' });
+        created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+        vi.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
+        await hireEmployee(store, '검증', tmpCwd, 'staff', SONNET);
+        clockOut(store, 2);
+        created[1].emit({ kind: 'text', text: '검증의 노트' });
+        created[1].emit({ kind: 'result', text: '', costUsd: 0 });
+
+        const notes = listHandoffNotes(tmpCwd);
+
+        expect(notes.map((n) => n.employee)).toEqual(['검증', '코더']);
+        expect(notes.map((n) => n.key)).toEqual([
+          path.basename(getHandoffDir(tmpCwd, '검증')),
+          path.basename(getHandoffDir(tmpCwd, '코더')),
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('frontmatter를 못 읽는(또는 없는) 폴더는 건너뛴다', () => {
+      const dir = path.join(tmpCwd, '.ai-office', 'handoff', 'broken');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, '2020-01-01T00-00-00.000Z.md'),
+        '내용만 있고 frontmatter가 없음',
+      );
+
+      expect(listHandoffNotes(tmpCwd)).toEqual([]);
+    });
+  });
+
+  describe('hireEmployee(handoffFromKey) — 인계 이어받기', () => {
+    let tmpCwd: string;
+
+    beforeEach(() => {
+      tmpCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-office-resume-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpCwd, { recursive: true, force: true });
+    });
+
+    it('주어진 키 폴더의 최신 노트를 실어 시작한다 — 다른 이름 직원이 이어받는 경우도 포함', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '코더가 남긴 인수인계' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+      // 해임하되 노트는 남긴다 — 다음 고용에서 골라 이어받을 수 있어야 한다.
+      fireEmployee(store, 1, undefined, false);
+
+      const [note] = listHandoffNotes(tmpCwd);
+      expect(note.employee).toBe('코더');
+
+      // 완전히 다른 이름의 새 직원이 그 키를 지목해 이어받는다(Case C).
+      await hireEmployee(
+        store,
+        '검증',
+        tmpCwd,
+        'staff',
+        SONNET,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        note.key,
+      );
+
+      expect(created[1].startedWithHandoffNote).toContain('코더가 남긴 인수인계');
+    });
+
+    it('handoffFromKey를 안 주면 평범한 첫 근무로 시작한다(노트 없음)', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+
+      expect(created[0].startedWithHandoffNote).toBeUndefined();
+    });
+
+    it('같은 이름 자신의 키를 지정해도 이어받을 수 있다(같은 사람이 다시 고용되는 경우)', async () => {
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '내가 남긴 노트' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+      fireEmployee(store, 1, undefined, false);
+
+      const [note] = listHandoffNotes(tmpCwd);
+
+      await hireEmployee(
+        store,
+        '코더',
+        tmpCwd,
+        'staff',
+        SONNET,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        note.key,
+      );
+
+      expect(created[1].startedWithHandoffNote).toContain('내가 남긴 노트');
+    });
+
+    it('handoffFromKey가 handoff 폴더를 벗어나면(경로 탈출) 노트를 읽지 않는다', async () => {
+      // handoff 폴더 밖에 미끼 노트를 심는다 — 가드가 없으면 이걸 읽어버린다.
+      const evilDir = path.join(tmpCwd, '.ai-office', 'evil');
+      fs.mkdirSync(evilDir, { recursive: true });
+      fs.writeFileSync(path.join(evilDir, 'x.md'), '---\nemployee: 침입\nsavedAt: 2020\n---\n비밀');
+
+      await hireEmployee(
+        store,
+        '코더',
+        tmpCwd,
+        'staff',
+        SONNET,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        '../evil',
+      );
+
+      expect(created[0].startedWithHandoffNote).toBeUndefined();
     });
   });
 });

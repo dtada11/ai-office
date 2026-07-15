@@ -32,6 +32,7 @@ export type ServerMessage =
   | AgentSessionEvent
   | AgentPermissionRequest
   | AgentPermissionResolved
+  | HandoffNotesListed
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -69,6 +70,7 @@ export type ClientMessage =
   | KillShellCommand
   | HireEmployee
   | FireEmployee
+  | ListHandoffNotes
   | SendAgentMessage
   | SetAgentModel
   | RenameEmployee
@@ -283,6 +285,18 @@ export interface AgentPermissionResolved {
   type: 'agentPermissionResolved';
   agentId: number;
   requestId: string;
+}
+
+export interface HandoffNotesListed {
+  type: 'handoffNotesListed';
+  cwd: string;
+  notes: HandoffNoteSummary[];
+}
+
+export interface HandoffNoteSummary {
+  key: string;
+  employee: string;
+  savedAt: string;
 }
 
 export interface LayoutLoaded {
@@ -530,6 +544,7 @@ export interface HireEmployee {
   persona?: string;
   provider?: EmployeeProvider;
   model?: string;
+  handoffFromKey?: string;
 }
 
 export interface EmployeeProvider {
@@ -540,6 +555,12 @@ export interface EmployeeProvider {
 export interface FireEmployee {
   type: 'fireEmployee';
   agentId: number;
+  deleteHandoff?: boolean;
+}
+
+export interface ListHandoffNotes {
+  type: 'listHandoffNotes';
+  cwd: string;
 }
 
 export interface SendAgentMessage {

@@ -106,6 +106,7 @@ function App() {
     setupCheckResult,
     officeNotice,
     clearOfficeNotice,
+    handoffNotes,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   /** Chat windows the user has open. Render order IS stacking order, so the last
@@ -436,6 +437,7 @@ function App() {
           onClose={handleCloseOnboarding}
           officeProvider={officeProvider}
           setupCheckResult={setupCheckResult}
+          handoffNotes={handoffNotes}
         />
       )}
 
@@ -489,6 +491,7 @@ function App() {
           isOpen={isStaffOpen}
           onClose={() => setIsStaffOpen(false)}
           onOpenPersona={handleOpenPersona}
+          handoffNotes={handoffNotes}
         />
       )}
 
