@@ -9,6 +9,7 @@
   <img alt="Fastify" src="https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white">
   <img alt="WebSocket" src="https://img.shields.io/badge/WebSocket-010101?logo=socketdotio&logoColor=white">
   <img alt="Claude Agent SDK" src="https://img.shields.io/badge/Claude_Agent_SDK-D97757?logo=anthropic&logoColor=white">
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-2B2E3A?logo=electron&logoColor=white">
 </p>
 
 <p align="center">
@@ -48,6 +49,7 @@ Claude Code로 AI 팀(코더·디자이너·테스터)을 굴리다 보니 **팀
 | **AI 연결 설정**     | 구독 / API 키 2가지. 사무실 기본값 + 직원별 덮어쓰기                                                                                                                         |
 | **직원별 모델 전환** | 직원마다 다른 모델(실행 중 세션도 즉시 전환) — 업무에 맞게 배치해 비용 절감                                                                                                  |
 | **사용량 게이지**    | 구독 소진율을 실측으로 보정, API 키 직원은 누적 비용($) 표시                                                                                                                 |
+| **데스크톱 앱**      | 브라우저 없이 창으로 실행. 창을 닫아도 트레이에서 계속 돌고 Windows 설치 파일로도 빌드된다                                                                                   |
 | 한글 UI              | 전체 인터페이스 한글화                                                                                                                                                       |
 
 ## 내가 내린 설계 결정 (그리고 그 이유)
@@ -105,8 +107,11 @@ AI 인증 방식이 2가지인데, SDK는 **API 키를 구독보다 먼저** 봅
 | 통신       | 서버→모든 화면 실시간 방송. 탭을 여러 개 열어도 같은 사무실을 봄                               |
 | 저장       | 홈 디렉토리에 JSON (직원 명부·레이아웃·설정). 비밀 값은 권한 0600, **저장소에 절대 안 들어감** |
 | 테스트     | Vitest 단위 (서버 300 · 웹뷰 97, 전부 통과), Playwright E2E                                    |
+| 배포       | Electron (데스크톱 셸·트레이 상주), electron-builder (Windows 설치 파일)                       |
 
 ## 실행
+
+### 브라우저로
 
 ```bash
 git clone https://github.com/dtada11/ai-office.git
@@ -118,11 +123,15 @@ node dist/cli.js --port 3100
 
 브라우저에서 `http://localhost:3100` → 직원 패널에서 이름·담당 폴더를 넣고 고용.
 
+### 데스크톱 앱
+
+터미널과 브라우저 없이 창 하나로 쓰려면 데스크톱 앱으로 빌드할 수 있습니다. `npm run desktop:dev`는 개발 중에 Electron 창을 바로 띄우고, `npm run desktop:dist`는 Windows 설치 파일을 `release/` 폴더에 만듭니다. 이 설치 파일 하나에 앱이 도는 데 필요한 게 전부 들어 있어서(런타임·서버·에셋), 받는 사람은 그 파일만 더블클릭하면 됩니다. 창을 닫아도 사무실은 트레이에 남아 계속 돌고, 트레이 아이콘을 누르면 다시 열립니다. 인증은 설치 파일에서도 본인 것을 씁니다. 브라우저로 쓸 때와 같은 전제입니다.
+
 **요구사항**: Node.js 18+, 그리고 [Claude Code CLI](https://code.claude.com/docs) 로그인(구독 모드) 또는 Anthropic API 키.
 
 ## 솔직히 밝힙니다
 
-- **이건 [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents)(MIT, 2026년 2월 시작) 기반입니다.** 2026년 7월 11일부터 닷새간 작업했고, 커밋 52개·85개 파일·약 8,200줄을 더했습니다.
+- **이건 [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents)(MIT, 2026년 2월 시작) 기반입니다.** 2026년 7월 11일부터 작업했고, 커밋 54개·약 88개 파일·약 8,400줄을 더했습니다(데스크톱 앱 패키징 포함).
 - **설계 결정은 제가, 구현은 AI와 협업했습니다.** 위의 "설계 결정"과 "만들면서 만난 문제들"은 전부 제가 판단하고 지시한 것이고, 각 결정의 근거는 작업 로그에 남겼습니다. 코드를 읽고 설명하는 훈련을 병행하고 있습니다.
 - **아직 안 되는 것**: 다른 회사 AI(GPT·Gemini) 연결, 외부 기기 원격 접속, 그리고 **온보딩 안내** — Claude Code가 없거나 로그인이 안 된 상태에서 직원을 고용하면 지금은 조용히 실패합니다(안내 화면 미구현).
 
