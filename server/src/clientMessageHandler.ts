@@ -23,6 +23,7 @@ import {
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
+import { runSetupCheck } from './setupCheck.js';
 import { killShellCommand, runShellCommand } from './shellRunner.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
@@ -57,6 +58,7 @@ const KEY_ALWAYS_SHOW_LABELS = 'pixel-agents.alwaysShowLabels';
 const KEY_WATCH_ALL_SESSIONS = 'pixel-agents.watchAllSessions';
 const KEY_HOOKS_ENABLED = 'pixel-agents.hooksEnabled';
 const KEY_HOOKS_INFO_SHOWN = 'pixel-agents.hooksInfoShown';
+const KEY_ONBOARDING_DONE = 'pixel-agents.onboardingDone';
 
 /**
  * Handle incoming ClientMessage from a WebSocket client.
@@ -155,6 +157,26 @@ export function handleClientMessage(
       adapter?.setSetting(KEY_HOOKS_INFO_SHOWN, true);
       break;
 
+    case 'setOnboardingDone':
+      adapter?.setSetting(KEY_ONBOARDING_DONE, msg.done as boolean);
+      break;
+
+    case 'runSetupCheck': {
+      const mode = isAuthMode(msg.mode) ? msg.mode : readOfficeProvider().mode;
+      runSetupCheck(mode)
+        .then((checks) => send({ type: 'setupCheckResult', mode, checks }))
+        .catch((err) => {
+          console.error('[Pixel Agents] runSetupCheck failed:', err);
+          const firstCheckId = mode === 'subscription' ? 'claudeInstalled' : 'apiKeyFormat';
+          send({
+            type: 'setupCheckResult',
+            mode,
+            checks: [{ id: firstCheckId, status: 'fail', detail: String(err) }],
+          });
+        });
+      break;
+    }
+
     case 'setAgentModel':
       setEmployeeModelFor(store, msg.agentId as number, msg.model as string);
       break;
@@ -170,6 +192,11 @@ export function handleClientMessage(
     case 'clockIn':
       void clockIn(store, msg.agentId as number, runtime).catch((err) => {
         console.error('[Pixel Agents] clock-in failed:', err);
+        store.broadcast({
+          type: 'officeNotice',
+          level: 'error',
+          text: '출근 실패: ' + String(err instanceof Error ? err.message : err),
+        });
       });
       break;
 
@@ -215,6 +242,11 @@ export function handleClientMessage(
         msg.persona as string | undefined,
       ).catch((err) => {
         console.error('[Pixel Agents] hire failed:', err);
+        store.broadcast({
+          type: 'officeNotice',
+          level: 'error',
+          text: '직원 고용 실패: ' + String(err instanceof Error ? err.message : err),
+        });
       });
       break;
 
@@ -317,16 +349,32 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   const cfg = readConfig();
   const watchAllSessions = adapter?.getSetting(KEY_WATCH_ALL_SESSIONS, false) ?? false;
   const hooksEnabled = adapter?.getSetting(KEY_HOOKS_ENABLED, true) ?? true;
+  const onboardingDone = adapter?.getSetting(KEY_ONBOARDING_DONE, false) ?? false;
+  const extensionVersion = process.env.PIXEL_AGENTS_VERSION ?? '';
+
+  // First-impression bug: a brand-new user has never seen ANY version, but
+  // lastSeenVersion defaults to '' — which VersionIndicator reads as "behind
+  // the current version" and greets them with "업데이트됨!" on their very
+  // first launch. Once onboarding exists, "never onboarded" is the reliable
+  // signal for "this is a new install": back-fill lastSeenVersion with the
+  // current version so the update notice stays reserved for actual updates.
+  let lastSeenVersion = adapter?.getSetting(KEY_LAST_SEEN_VERSION, '') ?? '';
+  if (!onboardingDone && lastSeenVersion === '' && extensionVersion) {
+    lastSeenVersion = extensionVersion;
+    adapter?.setSetting(KEY_LAST_SEEN_VERSION, extensionVersion);
+  }
+
   send({
     type: 'settingsLoaded',
     soundEnabled: adapter?.getSetting(KEY_SOUND_ENABLED, true) ?? true,
-    lastSeenVersion: adapter?.getSetting(KEY_LAST_SEEN_VERSION, '') ?? '',
-    extensionVersion: process.env.PIXEL_AGENTS_VERSION ?? '',
+    lastSeenVersion,
+    extensionVersion,
     watchAllSessions,
     alwaysShowLabels: adapter?.getSetting(KEY_ALWAYS_SHOW_LABELS, false) ?? false,
     hooksEnabled,
     hooksInfoShown: adapter?.getSetting(KEY_HOOKS_INFO_SHOWN, false) ?? false,
     externalAssetDirectories: cfg.externalAssetDirectories,
+    onboardingDone,
   });
 
   // 4a. The office's AI, masked — the client shows which one is plugged in.

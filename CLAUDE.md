@@ -316,7 +316,21 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
 ```
 
-`FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksEnabled`, `hooksInfoShown`. Running both surfaces in parallel never clobbers either.
+`FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksEnabled`, `hooksInfoShown`, `onboardingDone`. Running both surfaces in parallel never clobbers either.
+
+### Onboarding & setup diagnostics
+
+Standalone-only (`isBrowserRuntime`) first-run wizard (`webview-ui/src/components/OnboardingWizard.tsx`): pick an AI (subscription vs. apiKey via `ProviderPicker`), run prerequisite checks, then optionally hire a first employee (role `lead`). Reachable again anytime via Settings → "연결 진단 / 온보딩 다시 보기".
+
+Diagnostics are a separate protocol pair from the older `requestDiagnostics`/`agentDiagnostics` (agent connection dumps): the client sends `runSetupCheck` (`mode?: AuthMode`, defaults to the office's current mode), and the server answers `setupCheckResult` (`{ mode, checks: SetupCheck[] }`) **to that client only** — never broadcast, since two clients could be checking different modes concurrently. Each `SetupCheck` is `{ id, status, detail? }`:
+
+- `id`: `claudeInstalled` / `claudeLoggedIn` (subscription) or `apiKeyFormat` / `apiKeyValid` (apiKey)
+- `status`: `ok` / `fail` / `skip` (skip = an earlier check in the same mode already failed)
+- `detail`: raw evidence (CLI version, last stderr line, HTTP status) — no user-facing wording. Korean remediation copy lives entirely in the webview (`setupCheckCopy.ts`), never on the wire.
+
+`server/src/setupCheck.ts` runs the actual probes via `server/src/claudeCli.ts` (`runClaudeCli` — the shared `spawn('claude', ...)` helper `usageProbe.ts` also uses). Subscription checks run in the environment `buildEnv({mode:'subscription'})` produces (strips `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN`) so a key sitting in the server host's own environment can't make `claudeLoggedIn` false-pass. The apiKey validity check is a `GET /v1/models?limit=1` — zero tokens, zero dollars, just enough to tell a live key (200) from a dead one (401/403) — deliberately not a `/v1/messages` call (would risk billing a stranger's card on first run, and a hardcoded model id can 404 on a valid key/tier).
+
+`SetOnboardingDone { done }` persists `onboardingDone` (`false` reopens the wizard). `OfficeNotice { level, text }` is broadcast to every client — it replaces failures that used to be swallowed by a bare `console.error` (a `hireEmployee`/`clockIn` rejection, or an employee's session dying immediately after hire, which in practice is what a bad key/login looks like).
 
 `migrateVsCodeState` (VS Code adapter only) walks each known legacy key once with **verify-before-clear** semantics: write to file, read back, only then clear the legacy key. While anything remains unmigrated, activation shows a non-blocking warning.
 

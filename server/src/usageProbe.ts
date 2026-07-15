@@ -8,10 +8,11 @@
  * type in by hand, which went stale and skewed the gauges.
  */
 
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
+import { runClaudeCli } from './claudeCli.js';
 
 const SNAPSHOT_PATH = path.join(os.homedir(), '.pixel-agents', 'plan-usage.json');
 const PROBE_TIMEOUT_MS = 60 * 1000;
@@ -71,32 +72,21 @@ export function parseUsageOutput(out: string): ParsedUsage | null {
   };
 }
 
-function runUsageCommand(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // --no-session-persistence: without it every probe leaves a transcript file,
-    // which the office then picks up as a new session (ghost characters).
-    const proc = spawn('claude', ['-p', '--no-session-persistence', '/usage'], {
-      shell: true,
-      windowsHide: true,
-    });
-    let out = '';
-    const timer = setTimeout(() => {
-      proc.kill();
-      reject(new Error('/usage 시간 초과'));
-    }, PROBE_TIMEOUT_MS);
-
-    proc.stdout.setEncoding('utf-8');
-    proc.stdout.on('data', (chunk: string) => (out += chunk));
-    proc.stdin.end();
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    proc.on('close', () => {
-      clearTimeout(timer);
-      resolve(out);
-    });
+async function runUsageCommand(): Promise<string> {
+  // --no-session-persistence: without it every probe leaves a transcript file,
+  // which the office then picks up as a new session (ghost characters).
+  const result = await runClaudeCli(['-p', '--no-session-persistence', '/usage'], {
+    timeoutMs: PROBE_TIMEOUT_MS,
   });
+  if (result.spawnError === 'timeout') {
+    throw new Error('/usage 시간 초과');
+  }
+  if (result.spawnError) {
+    throw new Error(result.spawnError);
+  }
+  // Exit code is intentionally ignored here, same as before the claudeCli.ts
+  // extraction: parseUsageOutput() below is the real success/failure gate.
+  return result.stdout;
 }
 
 /**

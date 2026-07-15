@@ -296,6 +296,14 @@ function onEvent(
           kind: 'result',
           text: `세션 오류: ${event.text}`,
         });
+        // Hiring succeeded but the session died right away is the real-world
+        // shape of a key/login error — surface it even if nobody has this
+        // employee's chat window open (see officeNotice on hireEmployee).
+        store.broadcast({
+          type: 'officeNotice',
+          level: 'error',
+          text: `세션 오류: ${event.text}`,
+        });
       }
       store.delete(agentId);
       staff.delete(agentId);

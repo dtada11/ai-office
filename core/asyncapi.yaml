@@ -123,6 +123,9 @@ components:
         - $ref: '#/components/schemas/WorkspaceFolders'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
+        # Onboarding
+        - $ref: '#/components/schemas/SetupCheckResult'
+        - $ref: '#/components/schemas/OfficeNotice'
       discriminator: type
 
     ClientMessage:
@@ -158,6 +161,8 @@ components:
         - $ref: '#/components/schemas/AgentPermissionDecision'
         - $ref: '#/components/schemas/RefreshPlanUsage'
         - $ref: '#/components/schemas/SetOfficeProvider'
+        - $ref: '#/components/schemas/RunSetupCheck'
+        - $ref: '#/components/schemas/SetOnboardingDone'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -908,6 +913,14 @@ components:
           type: array
           items:
             type: string
+        onboardingDone:
+          type: boolean
+          description: |
+            Whether the first-run onboarding wizard has been completed (or
+            dismissed). Not required — the VS Code adapter never sends it, so
+            a client that only knows the required fields must still treat its
+            absence as "don't show onboarding" (browser client defaults this
+            state to true until the value arrives).
 
     ExternalAssetDirectoriesUpdated:
       description: External asset directory list changed (after add/remove).
@@ -948,6 +961,74 @@ components:
           description: Per-agent diagnostic info; shape opaque to the protocol.
           items:
             type: object
+
+    SetupCheckId:
+      type: string
+      description: Which onboarding prerequisite a SetupCheck entry reports on.
+      enum: [claudeInstalled, claudeLoggedIn, apiKeyFormat, apiKeyValid]
+
+    SetupCheckStatus:
+      type: string
+      description: |
+        ok/fail are terminal results; skip means a prior check in the same
+        mode already failed so this one could not meaningfully run (e.g.
+        claudeLoggedIn when claudeInstalled failed).
+      enum: [ok, fail, skip]
+
+    SetupCheck:
+      description: One prerequisite's result, as evidence only — no user-facing copy.
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id:
+          $ref: '#/components/schemas/SetupCheckId'
+        status:
+          $ref: '#/components/schemas/SetupCheckStatus'
+        detail:
+          type: string
+          description: |
+            Evidence backing the status (CLI version string, last non-empty
+            stderr line, HTTP status/model id). Korean remediation copy is
+            owned by the webview, not sent here.
+
+    SetupCheckResult:
+      description: |
+        Response to runSetupCheck. Sent to the requesting client only — never
+        broadcast, since two clients could be checking different modes.
+      type: object
+      additionalProperties: false
+      required: [type, mode, checks]
+      properties:
+        type:
+          const: setupCheckResult
+        mode:
+          $ref: '#/components/schemas/AuthMode'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetupCheck'
+
+    OfficeNoticeLevel:
+      type: string
+      enum: [info, error]
+
+    OfficeNotice:
+      description: |
+        A notice for every connected client — replaces failures that used to
+        be swallowed by a bare console.error (e.g. hireEmployee/clockIn
+        rejecting, or an employee's session dying right after hire).
+        Broadcast.
+      type: object
+      additionalProperties: false
+      required: [type, level, text]
+      properties:
+        type:
+          const: officeNotice
+        level:
+          $ref: '#/components/schemas/OfficeNoticeLevel'
+        text:
+          type: string
 
     # ── Client message variants ────────────────────────────────────
 
@@ -1368,6 +1449,34 @@ components:
       properties:
         type:
           const: requestDiagnostics
+
+    RunSetupCheck:
+      description: |
+        Ask the server to run onboarding prerequisite checks for an auth mode
+        (Claude Code installed/logged in for subscription; key format/validity
+        for apiKey). Answered with setupCheckResult, sent to this client only.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: runSetupCheck
+        mode:
+          $ref: '#/components/schemas/AuthMode'
+          description: Mode to check. Omitted = the office's current default mode.
+
+    SetOnboardingDone:
+      description: |
+        Mark the first-run onboarding wizard as complete, or reopen it by
+        sending false (used by "온보딩 다시 보기" in Settings).
+      type: object
+      additionalProperties: false
+      required: [type, done]
+      properties:
+        type:
+          const: setOnboardingDone
+        done:
+          type: boolean
 
     # ── Supporting schemas ─────────────────────────────────────────
 

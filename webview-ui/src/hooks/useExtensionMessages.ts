@@ -15,6 +15,7 @@ import {
 import type { OfficeLayout, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { isE2E } from '../runtime.js';
+import type { SetupCheck } from '../setupCheckCopy.js';
 import { transport } from '../transport/index.js';
 import type { PermissionRequest } from './permissionQueue.js';
 import { dequeuePermission, enqueuePermission } from './permissionQueue.js';
@@ -94,9 +95,37 @@ interface ExtensionMessageState {
   busyLabel: Record<number, string>;
   /** Mark an employee's turn as started, right when a message is sent (optimistic). */
   markSending: (agentId: number) => void;
+  /** Whether the first-run onboarding wizard has been completed/dismissed.
+   *  Defaults true (see hooksInfoShown for the same "assume seen" reasoning)
+   *  so a not-yet-arrived server value never flashes the wizard open, and so
+   *  the VS Code adapter (which never sends this field) never shows it. */
+  onboardingDone: boolean;
+  /** Latest result of a runSetupCheck, for the mode it was run against. Null
+   *  until the first result arrives (or after a mode change re-request). */
+  setupCheckResult: SetupCheckResultInfo | null;
+  /** Most recent office-wide notice (e.g. a hire that failed silently before).
+   *  Single slot — a new notice replaces the last one. */
+  officeNotice: OfficeNoticeInfo | null;
+  /** Dismiss the current office notice. */
+  clearOfficeNotice: () => void;
 }
 
 export type AuthMode = 'subscription' | 'apiKey';
+
+/** SetupCheck/Id/Status are defined in setupCheckCopy.ts (not here) and
+ *  re-exported — see the comment there for why: that pure module (and its
+ *  test) must never pull in this file's `window`/DOM usage. */
+export type { SetupCheck, SetupCheckId, SetupCheckStatus } from '../setupCheckCopy.js';
+
+export interface SetupCheckResultInfo {
+  mode: AuthMode;
+  checks: SetupCheck[];
+}
+
+export interface OfficeNoticeInfo {
+  level: 'info' | 'error';
+  text: string;
+}
 
 export interface EmployeeInfo {
   agentId: number;
@@ -198,6 +227,9 @@ export function useExtensionMessages(
   const [permissions, setPermissions] = useState<Record<number, PermissionRequest[]>>({});
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [busyLabel, setBusyLabel] = useState<Record<number, string>>({});
+  const [onboardingDone, setOnboardingDone] = useState(true);
+  const [setupCheckResult, setSetupCheckResult] = useState<SetupCheckResultInfo | null>(null);
+  const [officeNotice, setOfficeNotice] = useState<OfficeNoticeInfo | null>(null);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -632,6 +664,19 @@ export function useExtensionMessages(
         if (typeof msg.extensionVersion === 'string') {
           setExtensionVersion(msg.extensionVersion as string);
         }
+        if (typeof msg.onboardingDone === 'boolean') {
+          setOnboardingDone(msg.onboardingDone as boolean);
+        }
+      } else if (msg.type === 'setupCheckResult') {
+        setSetupCheckResult({
+          mode: msg.mode as AuthMode,
+          checks: msg.checks as SetupCheck[],
+        });
+      } else if (msg.type === 'officeNotice') {
+        setOfficeNotice({
+          level: msg.level as 'info' | 'error',
+          text: msg.text as string,
+        });
       } else if (msg.type === 'externalAssetDirectoriesUpdated') {
         if (Array.isArray(msg.dirs)) {
           setExternalAssetDirectories(msg.dirs as string[]);
@@ -783,6 +828,8 @@ export function useExtensionMessages(
     setBusyLabel((prev) => ({ ...prev, [agentId]: '생각하는 중' }));
   }, []);
 
+  const clearOfficeNotice = useCallback(() => setOfficeNotice(null), []);
+
   return {
     employees,
     chatLogs,
@@ -813,5 +860,9 @@ export function useExtensionMessages(
     agentTokenInfo,
     planUsage,
     officeProvider,
+    onboardingDone,
+    setupCheckResult,
+    officeNotice,
+    clearOfficeNotice,
   };
 }

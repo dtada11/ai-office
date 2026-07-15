@@ -23,6 +23,9 @@ interface SettingsModalProps {
   onToggleWatchAllSessions: () => void;
   hooksEnabled: boolean;
   onToggleHooksEnabled: () => void;
+  /** Reopens the onboarding wizard ("연결 진단 / 온보딩 다시 보기"). Absent in
+   *  VS Code, where the wizard never runs. */
+  onReopenOnboarding?: () => void;
 }
 
 export function SettingsModal({
@@ -38,6 +41,7 @@ export function SettingsModal({
   hooksEnabled,
   onToggleHooksEnabled,
   officeProvider,
+  onReopenOnboarding,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const [providerMode, setProviderMode] = useState(officeProvider?.mode ?? 'subscription');
@@ -155,6 +159,16 @@ export function SettingsModal({
         >
           저장
         </Button>
+        {onReopenOnboarding && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReopenOnboarding}
+            data-testid="reopen-onboarding"
+          >
+            연결 진단 / 온보딩 다시 보기
+          </Button>
+        )}
       </div>
     </Modal>
   );

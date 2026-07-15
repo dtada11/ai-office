@@ -9,6 +9,7 @@ import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { EmployeeChat } from './components/EmployeeChat.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { PersonaEditor } from './components/PersonaEditor.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { StaffPanel } from './components/StaffPanel.js';
@@ -101,6 +102,10 @@ function App() {
     busy,
     busyLabel,
     markSending,
+    onboardingDone,
+    setupCheckResult,
+    officeNotice,
+    clearOfficeNotice,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   /** Chat windows the user has open. Render order IS stacking order, so the last
@@ -172,6 +177,23 @@ function App() {
   const [isStaffOpen, setIsStaffOpen] = useState(false);
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
+  // Same "assume seen, then let the local dismiss override" shape as the
+  // hooks tooltip above. manualOnboardingOpen is the extra bit onboarding
+  // needs: "다시 보기" in Settings must reopen the wizard even though it was
+  // already dismissed once this session.
+  const [onboardingDismissedLocally, setOnboardingDismissedLocally] = useState(false);
+  const [manualOnboardingOpen, setManualOnboardingOpen] = useState(false);
+  const showOnboarding =
+    isBrowserRuntime && ((!onboardingDone && !onboardingDismissedLocally) || manualOnboardingOpen);
+  const handleCloseOnboarding = useCallback(() => {
+    setOnboardingDismissedLocally(true);
+    setManualOnboardingOpen(false);
+  }, []);
+  const handleReopenOnboarding = useCallback(() => {
+    setOnboardingDismissedLocally(false);
+    setManualOnboardingOpen(true);
+    transport.send({ type: 'setOnboardingDone', done: false });
+  }, []);
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
 
@@ -392,6 +414,31 @@ function App() {
         </Tooltip>
       )}
 
+      {/* Office-wide notice — replaces failures that used to be silently
+          swallowed (hire/clock-in errors, a session dying right after hire). */}
+      {officeNotice && (
+        <Tooltip
+          title={officeNotice.level === 'error' ? '오류' : '알림'}
+          position="bottom-right"
+          onDismiss={clearOfficeNotice}
+        >
+          <span
+            className={`text-sm leading-none ${officeNotice.level === 'error' ? 'text-status-error' : 'text-text'}`}
+          >
+            {officeNotice.text}
+          </span>
+        </Tooltip>
+      )}
+
+      {isBrowserRuntime && (
+        <OnboardingWizard
+          isOpen={showOnboarding}
+          onClose={handleCloseOnboarding}
+          officeProvider={officeProvider}
+          setupCheckResult={setupCheckResult}
+        />
+      )}
+
       {/* Hooks info modal */}
       <Modal
         isOpen={isHooksInfoOpen}
@@ -527,6 +574,14 @@ function App() {
           setHooksEnabled(newVal);
           transport.send({ type: 'setHooksEnabled', enabled: newVal });
         }}
+        onReopenOnboarding={
+          isBrowserRuntime
+            ? () => {
+                handleReopenOnboarding();
+                setIsSettingsOpen(false);
+              }
+            : undefined
+        }
       />
 
       {showMigrationNotice && (

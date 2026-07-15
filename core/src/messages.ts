@@ -42,7 +42,9 @@ export type ServerMessage =
   | OfficeProvider
   | ExternalAssetDirectoriesUpdated
   | WorkspaceFolders
-  | AgentDiagnostics;
+  | AgentDiagnostics
+  | SetupCheckResult
+  | OfficeNotice;
 
 export type ClientMessage =
   | WebviewReady
@@ -75,7 +77,9 @@ export type ClientMessage =
   | ClockOut
   | AgentPermissionDecision
   | RefreshPlanUsage
-  | SetOfficeProvider;
+  | SetOfficeProvider
+  | RunSetupCheck
+  | SetOnboardingDone;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -361,6 +365,7 @@ export interface SettingsLoaded {
   hooksEnabled: boolean;
   hooksInfoShown: boolean;
   externalAssetDirectories: string[];
+  onboardingDone?: boolean;
 }
 
 export interface OfficeProvider {
@@ -389,6 +394,30 @@ export interface AgentDiagnostics {
   type: 'agentDiagnostics';
   agents: Record<string, any>[];
 }
+
+export interface SetupCheckResult {
+  type: 'setupCheckResult';
+  mode: AuthMode;
+  checks: SetupCheck[];
+}
+
+export interface SetupCheck {
+  id: SetupCheckId;
+  status: SetupCheckStatus;
+  detail?: string;
+}
+
+export type SetupCheckId = 'claudeInstalled' | 'claudeLoggedIn' | 'apiKeyFormat' | 'apiKeyValid';
+
+export type SetupCheckStatus = 'ok' | 'fail' | 'skip';
+
+export interface OfficeNotice {
+  type: 'officeNotice';
+  level: OfficeNoticeLevel;
+  text: string;
+}
+
+export type OfficeNoticeLevel = 'info' | 'error';
 
 export interface WebviewReady {
   type: 'webviewReady';
@@ -562,4 +591,14 @@ export interface SetOfficeProvider {
   mode: AuthMode;
   apiKey?: string;
   model?: string;
+}
+
+export interface RunSetupCheck {
+  type: 'runSetupCheck';
+  mode?: AuthMode;
+}
+
+export interface SetOnboardingDone {
+  type: 'setOnboardingDone';
+  done: boolean;
 }
