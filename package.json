@@ -8,13 +8,18 @@
     "type": "git",
     "url": "https://github.com/dtada11/ai-office"
   },
-  "workspaces": ["server", "webview-ui"],
+  "workspaces": [
+    "server",
+    "webview-ui"
+  ],
   "icon": "icon.png",
   "license": "MIT",
   "engines": {
     "vscode": "^1.105.0"
   },
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "categories": [
     "Other"
   ],
@@ -76,6 +81,7 @@
     "build:webview": "cd webview-ui && npm run build",
     "compile": "npm run asyncapi:generate && npm run check-types && npm run lint && node esbuild.js && npm run build:webview",
     "build": "npm run compile",
+    "desktop:dev": "electron adapters/electron/main.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -113,6 +119,7 @@
     "@vscode/test-electron": "^2.5.2",
     "allure-commandline": "^2.38.1",
     "allure-playwright": "^3.7.1",
+    "electron": "^43.1.1",
     "esbuild": "^0.28.0",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
