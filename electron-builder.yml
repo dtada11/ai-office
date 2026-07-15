@@ -1,0 +1,36 @@
+# electron-builder — Windows 설치형 패키징 (데스크톱 2단계)
+#
+# package.json 의 main 은 VS Code 확장 진입점(dist/extension.js)이라
+# 건드릴 수 없다. 패키지 앱에서만 extraMetadata.main 으로 Electron 진입점을
+# 덮어쓴다. asar 는 끈다 — 서버는 ELECTRON_RUN_AS_NODE 자식(순수 Node)이라
+# asar 안의 파일을 읽지 못하기 때문. node_modules 는 여기 나열하지 않아도
+# electron-builder 가 프로덕션 의존성 트리(fastify·SDK)를 자동 포함한다.
+appId: com.dtada.ai-office
+productName: AI 오피스
+copyright: © 2026 dtada. Pixel Agents(MIT) 기반.
+
+directories:
+  output: release
+  buildResources: build
+
+asar: false
+
+extraMetadata:
+  main: adapters/electron/main.js
+
+files:
+  - dist/**
+  - adapters/electron/**
+  - icon.png
+  - package.json
+
+win:
+  target: nsis
+  icon: build/icon.png
+  # 개인 사용자 대상 로컬 도구 — 관리자 권한/서명 없이 설치되게 둔다.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ai-office-${version}-setup.${ext}

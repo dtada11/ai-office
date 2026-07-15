@@ -82,6 +82,8 @@
     "compile": "npm run asyncapi:generate && npm run check-types && npm run lint && node esbuild.js && npm run build:webview",
     "build": "npm run compile",
     "desktop:dev": "electron adapters/electron/main.js",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder --win",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -120,6 +122,7 @@
     "allure-commandline": "^2.38.1",
     "allure-playwright": "^3.7.1",
     "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.0",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
@@ -144,6 +147,7 @@
     "webview-ui/**/*.{ts,tsx,js,css,json}": "prettier --write"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.210",
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^9.1.1",
     "@fastify/websocket": "^11.2.0",
