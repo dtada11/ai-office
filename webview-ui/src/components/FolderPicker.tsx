@@ -139,6 +139,13 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
           ↑ 상위로
         </Button>
 
+        {/* Stated once, up front, rather than only after someone hits an empty
+         *  folder and wonders where their files went -- this picker only ever
+         *  lists subfolders (it's choosing a cwd, not a file). */}
+        <span className="text-2xs text-text-muted" data-testid="folder-picker-hint">
+          폴더만 보여드려요 · 파일은 표시하지 않아요
+        </span>
+
         <div className="flex flex-col border-2 border-border max-h-64 overflow-y-auto">
           {loading && (
             <div className="flex items-center gap-4 p-6" data-testid="folder-picker-loading">
@@ -155,9 +162,12 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
             </div>
           )}
           {!loading && !listing?.error && listing?.entries.length === 0 && (
-            <div className="flex items-center gap-4 p-6" data-testid="folder-picker-empty">
-              <span className="w-6 h-6 rounded-full shrink-0 border-2 border-border" />
-              <span className="text-2xs text-text-muted">하위 폴더가 없습니다.</span>
+            <div className="flex items-start gap-4 p-6" data-testid="folder-picker-empty">
+              <span className="w-6 h-6 rounded-full shrink-0 border-2 border-border mt-2" />
+              <span className="text-2xs text-text-muted">
+                하위 폴더가 없어요. 아래 이 폴더 선택 버튼을 누르면 지금 여기를 담당 폴더로 지정할
+                수 있어요.
+              </span>
             </div>
           )}
           {!loading &&

@@ -47,11 +47,15 @@ interface StaffPanelProps {
 type StaffTabId = 'roster' | 'hire' | 'scaffold';
 
 /** Adding a tab later is one entry here (plus its content block below) — no
- *  router or tab-context library, there are only ever a couple of these. */
+ *  router or tab-context library, there are only ever a couple of these.
+ *  Labels stay short on purpose: the panel is a fixed w-400 and "직원 관리"
+ *  above already sets the context, so "목록/고용" read fine without a
+ *  restated "직원" prefix. All three plus the roster count still have to
+ *  fit on one line at once -- that's the whole reason they're this short. */
 const STAFF_TABS: { id: StaffTabId; label: string }[] = [
-  { id: 'roster', label: '직원 목록' },
-  { id: 'hire', label: '새 직원 고용' },
-  { id: 'scaffold', label: '팀 프로젝트 만들기' },
+  { id: 'roster', label: '목록' },
+  { id: 'hire', label: '고용' },
+  { id: 'scaffold', label: '팀 프로젝트' },
 ];
 
 /** What an employee's row says they run on. */
@@ -285,6 +289,12 @@ export function StaffPanel({
     setEditingLabelId(null);
   };
 
+  // Mirrors the guard inside hire() itself -- surfaced here so the button can
+  // look disabled instead of silently doing nothing when required fields (or,
+  // in key mode, the key) are missing.
+  const hireReady =
+    name.trim() !== '' && cwd.trim() !== '' && (mode !== 'apiKey' || secret.trim() !== '');
+
   const selectedTemplate = findTeamTemplate(templateKey);
   const scaffoldPreview = selectedTemplate
     ? buildScaffoldPreview(selectedTemplate, scaffoldBaseDir, projectName)
@@ -349,6 +359,7 @@ export function StaffPanel({
             key={tab.id}
             variant={activeTab === tab.id ? 'active' : 'ghost'}
             size="sm"
+            className="whitespace-nowrap"
             onClick={() => setActiveTab(tab.id)}
             data-testid={`staff-tab-${tab.id}`}
           >
@@ -384,7 +395,10 @@ export function StaffPanel({
             className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="이름 (예: 비서)"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') hire();
+            }}
+            placeholder="이름 (필수 · 예: 비서)"
             data-testid="hire-name"
           />
           <div className="flex gap-2">
@@ -395,7 +409,7 @@ export function StaffPanel({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') hire();
               }}
-              placeholder="담당 폴더 (절대 경로, 예: C:\Users\me\projects\my-app)"
+              placeholder="담당 폴더 (필수 · 절대 경로, 예: C:\Users\me\projects\my-app)"
               data-testid="hire-cwd"
             />
             <Button
@@ -407,20 +421,25 @@ export function StaffPanel({
               불러오기
             </Button>
           </div>
-          <select
-            className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
-            value={jobId}
-            onChange={(e) => handleJobChange(e.target.value)}
-            title="직무를 고르면 아래 직함·지침·모델이 채워집니다. 고른 뒤에도 자유롭게 고칠 수 있습니다."
-            data-testid="hire-job"
-          >
-            <option value="">직무 선택 안 함</option>
-            {JOB_PRESETS.map((job) => (
-              <option key={job.id} value={job.id}>
-                {job.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2">
+            <span className="text-2xs text-text-muted">
+              직무 프리셋 (선택 · 고르면 아래 직함·지침·모델이 채워져요)
+            </span>
+            <select
+              className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
+              value={jobId}
+              onChange={(e) => handleJobChange(e.target.value)}
+              title="직무를 고르면 아래 직함·지침·모델이 채워집니다. 고른 뒤에도 자유롭게 고칠 수 있습니다."
+              data-testid="hire-job"
+            >
+              <option value="">직무 선택 안 함</option>
+              {JOB_PRESETS.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <input
             className="bg-bg-dark border-2 border-border rounded-none px-6 py-4 font-mono text-xs text-text outline-none"
             value={roleLabel}
@@ -479,7 +498,13 @@ export function StaffPanel({
             />
           </div>
 
-          <Button variant="default" size="sm" onClick={hire}>
+          <Button
+            variant={hireReady ? 'accent' : 'disabled'}
+            size="sm"
+            disabled={!hireReady}
+            onClick={hire}
+            data-testid="hire-submit"
+          >
             고용
           </Button>
         </div>
@@ -538,13 +563,21 @@ export function StaffPanel({
             >
               <span className="text-2xs text-text-muted">만들어질 폴더</span>
               {scaffoldPreview.dirs.map((d) => (
-                <span key={d} className="font-mono text-2xs">
+                <span
+                  key={d}
+                  className="font-mono text-2xs overflow-hidden text-ellipsis whitespace-nowrap"
+                  title={d}
+                >
                   {d}
                 </span>
               ))}
               <span className="text-2xs text-text-muted mt-4">팀 구성</span>
               {scaffoldPreview.roster.map((r) => (
-                <span key={r.cwd} className="text-2xs">
+                <span
+                  key={r.cwd}
+                  className="text-2xs overflow-hidden text-ellipsis whitespace-nowrap"
+                  title={`${r.roleLabel} (${r.org === 'lead' ? '팀장' : '팀원'}) — ${r.cwd}`}
+                >
                   {r.roleLabel} ({r.org === 'lead' ? '팀장' : '팀원'}) — {r.cwd}
                 </span>
               ))}
@@ -552,9 +585,10 @@ export function StaffPanel({
           )}
 
           {scaffoldError && (
-            <span className="text-2xs text-status-permission" data-testid="scaffold-error">
-              {scaffoldError}
-            </span>
+            <div className="flex items-center gap-4" data-testid="scaffold-error">
+              <span className="w-6 h-6 rounded-full shrink-0 bg-status-permission" />
+              <span className="text-2xs text-status-permission">{scaffoldError}</span>
+            </div>
           )}
 
           <Button
