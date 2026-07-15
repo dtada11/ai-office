@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { isAllowedWsOrigin } from '../src/httpServer.js';
+import { AgentStateStore } from '../src/agentStateStore.js';
+import { HOOK_API_PREFIX } from '../src/constants.js';
+import type { HttpServerHandle } from '../src/httpServer.js';
+import { createHttpServer, isAllowedWsOrigin } from '../src/httpServer.js';
 
 describe('isAllowedWsOrigin', () => {
   it('allows a missing Origin (non-browser callers: hooks, curl, native clients)', () => {
@@ -33,5 +39,91 @@ describe('isAllowedWsOrigin', () => {
 
   it('rejects a malformed origin', () => {
     expect(isAllowedWsOrigin('not a url')).toBe(false);
+  });
+});
+
+describe('POST /api/scaffold-team origin guard', () => {
+  let handle: HttpServerHandle;
+  let tmpRoot: string;
+  const token = 'test-token';
+
+  beforeEach(async () => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-http-origin-test-'));
+    handle = await createHttpServer({
+      embedded: true,
+      token,
+      store: new AgentStateStore(),
+    });
+  });
+
+  afterEach(async () => {
+    await handle.app.close();
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  // 1. Allowed Origin + a normal JSON body -> passes through, folder created.
+  it('allows an allowed Origin with a normal JSON body', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: '/api/scaffold-team',
+      headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
+      payload: { templateKey: 'pure-dev', baseDir: tmpRoot, projectName: 'ok-project' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(tmpRoot, 'ok-project'))).toBe(true);
+  });
+
+  // 2. Disallowed Origin (the evil.com scenario) -> 403, nothing created.
+  it('rejects a disallowed Origin with 403 and creates nothing', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: '/api/scaffold-team',
+      headers: { origin: 'http://evil.com', 'content-type': 'application/json' },
+      payload: { templateKey: 'pure-dev', baseDir: tmpRoot, projectName: 'evil-project' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(fs.existsSync(path.join(tmpRoot, 'evil-project'))).toBe(false);
+  });
+
+  // 3. No Origin header at all -> passes through. This is the non-browser
+  // caller case (hook scripts, curl, a future desktop client) the rule must
+  // never break.
+  it('allows a missing Origin (non-browser callers) with a normal JSON body', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: '/api/scaffold-team',
+      headers: { 'content-type': 'application/json' },
+      payload: { templateKey: 'pure-dev', baseDir: tmpRoot, projectName: 'no-origin-project' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(tmpRoot, 'no-origin-project'))).toBe(true);
+  });
+
+  // 4. An unrecognized Content-Type is rejected before the route handler
+  // runs at all -- this is Fastify's own body parser (only 'application/json'
+  // is registered), not code added by this route. Asserted here so that
+  // behavior stays intentional and covered, not just assumed.
+  it('rejects an unsupported Content-Type with 415, before reaching the handler', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: '/api/scaffold-team',
+      headers: { origin: 'http://localhost:5173', 'content-type': 'text/xml' },
+      payload: '<xml/>',
+    });
+    expect(res.statusCode).toBe(415);
+    expect(fs.readdirSync(tmpRoot)).toEqual([]);
+  });
+
+  // 5. The hook endpoint (Origin-less by nature -- Claude Code's hook script
+  // is not a browser) is untouched by this route's origin guard: it only
+  // checks Bearer auth, same as before.
+  it('does not break the Origin-less hook endpoint', async () => {
+    const res = await handle.app.inject({
+      method: 'POST',
+      url: `${HOOK_API_PREFIX}/claude`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { session_id: 'abc', hook_event_name: 'Notification' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

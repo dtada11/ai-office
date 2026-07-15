@@ -120,16 +120,24 @@ function registerListDirRoute(app: FastifyInstance): void {
 }
 
 /** Creates a new team project folder ("팀 프로젝트 만들기"). Unlike list-dir
- *  this is a write, but it gets the same no-auth posture: standalone-only,
- *  local server, and the CORS origin check registered above already keeps a
- *  malicious webpage's JS from reaching it cross-origin -- the same posture
- *  the WebSocket write messages (hireEmployee, etc.) already rely on in
- *  standalone mode. POST because it has a side effect; a plain object body
- *  (not a core/asyncapi.yaml schema) for the same reason list-dir is a GET
- *  and not a WebSocket message. */
+ *  this is a write, so it's guarded by requireAllowedOrigin -- unlike the
+ *  CORS check registered above (which only stops a cross-origin page's JS
+ *  from *reading* the response), this preHandler refuses to run the request
+ *  at all when the Origin isn't allowed. No Bearer auth beyond that:
+ *  standalone-only, local server, same posture the WebSocket write messages
+ *  (hireEmployee, etc.) already rely on. POST because it has a side effect;
+ *  a plain object body (not a core/asyncapi.yaml schema) for the same reason
+ *  list-dir is a GET and not a WebSocket message.
+ *
+ *  Content-Type is not checked here: Fastify's own body parser already
+ *  rejects a body with an unrecognized or missing Content-Type (415/400)
+ *  before this handler runs, since only 'application/json' is registered --
+ *  see handle-request.js's FST_ERR_CTP_INVALID_MEDIA_TYPE / FST_ERR_CTP_EMPTY_TYPE.
+ *  Verified in httpServer.test.ts so this stays intentional, not assumed. */
 function registerScaffoldTeamRoute(app: FastifyInstance): void {
   app.post<{ Body: { templateKey?: string; baseDir?: string; projectName?: string } }>(
     '/api/scaffold-team',
+    { preHandler: requireAllowedOrigin },
     async (request, reply) => {
       const { templateKey, baseDir, projectName } = request.body ?? {};
       if (!templateKey || !baseDir || !projectName) {
@@ -174,12 +182,13 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
   );
 }
 
-// ── WebSocket ──────────────────────────────────────────────────
+// ── Origin Validation (shared by WS handshake + HTTP writes) ────
 
-/** True if a WebSocket handshake (or CORS request) from this Origin should be
- *  let through. A missing Origin means a non-browser caller — hook scripts,
- *  curl, a future desktop client — since browsers always send one; the attack
- *  this guards against (a malicious webpage's JS opening `ws://127.0.0.1:.../ws`)
+/** True if a WebSocket handshake (or CORS request, or HTTP write -- see
+ *  requireAllowedOrigin below) from this Origin should be let through. A
+ *  missing Origin means a non-browser caller — hook scripts, curl, a future
+ *  desktop client — since browsers always send one; the attack this guards
+ *  against (a malicious webpage's JS opening a request against 127.0.0.1)
  *  necessarily carries an Origin, so letting Origin-less callers through does
  *  not reopen that hole. 127.0.0.1 binding alone does not stop this: the
  *  browser making the connection is local, so bind-address checks never see
@@ -199,6 +208,19 @@ export function isAllowedWsOrigin(origin: string | undefined): boolean {
   // embedded mode, so pinning it here would be both wrong and fragile.
   return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
 }
+
+/** preHandler for HTTP write routes: rejects the request with 403 when its
+ *  Origin isn't allowed, reusing isAllowedWsOrigin so the WebSocket handshake
+ *  and HTTP writes share a single origin allowlist. Origin-less requests
+ *  (hook scripts, curl) pass through, same as isAllowedWsOrigin. Attach to
+ *  any write route with `{ preHandler: requireAllowedOrigin }`. */
+async function requireAllowedOrigin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (!isAllowedWsOrigin(request.headers.origin)) {
+    reply.code(403).send({ ok: false, error: 'forbidden origin' });
+  }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────
 
 function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
