@@ -45,6 +45,11 @@ const HANDOFF_SUMMARY_TIMEOUT_MS = 5 * 60 * 1000;
 /** Handoff notes kept per employee, oldest deleted first past this count. */
 const MAX_HANDOFF_NOTES = 10;
 
+/** Orphaned handoff folders (their employee no longer on the roster) kept per
+ *  cwd, oldest deleted first past this count. Current employees' folders are
+ *  never counted or pruned — this only caps notes left by departed employees. */
+const MAX_HANDOFF_FOLDERS = 10;
+
 const HANDOFF_SUMMARY_PROMPT = `지금 퇴근합니다. 다음 근무자에게 남길 인수인계 노트를 아래 세 항목으로 마크다운으로 작성해서, 답변 텍스트로만 알려주세요(파일을 만들지 마세요):
 
 1. 이번 근무에서 완료한 일
@@ -661,6 +666,39 @@ function pruneOldHandoffNotes(dir: string): void {
   }
 }
 
+/** Cap orphaned handoff folders under a cwd. A folder whose employee is still on
+ *  the roster is always kept (they may clock back in); among the rest — left by
+ *  fired or departed employees — only the most recent MAX_HANDOFF_FOLDERS stay,
+ *  so a folder that sees a lot of turnover doesn't pile up notes forever.
+ *  Ordered by each folder's latest note (filenames are timestamps, so a name
+ *  sort is a time sort). */
+function pruneOrphanedHandoffFolders(cwd: string): void {
+  const baseDir = path.join(cwd, '.ai-office', 'handoff');
+  const activeKeys = new Set(
+    [...staff.values()].filter((s) => s.cwd === cwd).map((s) => handoffKey(s.name)),
+  );
+  let orphans: { key: string; latest: string }[];
+  try {
+    orphans = fs
+      .readdirSync(baseDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !activeKeys.has(d.name))
+      .map((d) => ({
+        key: d.name,
+        latest: findLatestHandoffFile(path.join(baseDir, d.name)) ?? '',
+      }))
+      .sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
+  } catch {
+    return;
+  }
+  for (const { key } of orphans.slice(MAX_HANDOFF_FOLDERS)) {
+    try {
+      fs.rmSync(path.join(baseDir, key), { recursive: true, force: true });
+    } catch (err) {
+      console.warn('[Pixel Agents] failed to prune orphaned handoff folder:', err);
+    }
+  }
+}
+
 function writeHandoffNote(name: string, cwd: string, note: string): void {
   const dir = getHandoffDir(cwd, name);
   try {
@@ -683,6 +721,7 @@ function writeHandoffNote(name: string, cwd: string, note: string): void {
     fs.writeFileSync(tmpPath, content, 'utf8');
     fs.renameSync(tmpPath, filePath);
     pruneOldHandoffNotes(dir);
+    pruneOrphanedHandoffFolders(cwd);
   } catch (err) {
     console.warn('[Pixel Agents] failed to save handoff note:', err);
   }

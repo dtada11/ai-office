@@ -918,6 +918,37 @@ describe('employees', () => {
       expect(files).toContain('2020-01-01T00-00-01.000Z.md');
     });
 
+    it('cwd당 고아 인계 폴더가 상한을 넘으면 오래된 폴더부터 삭제된다(현재 직원 폴더는 보존)', async () => {
+      const base = path.join(tmpCwd, '.ai-office', 'handoff');
+      // 떠난 직원(고아) 폴더 12개를 서로 다른 타임스탬프로 심는다 (상한 10 + 2).
+      for (let i = 0; i < 12; i++) {
+        const key = `떠난직원${String(i).padStart(2, '0')}-deadbeef`;
+        fs.mkdirSync(path.join(base, key), { recursive: true });
+        const stamp = String(i).padStart(2, '0');
+        fs.writeFileSync(
+          path.join(base, key, `2020-01-01T00-00-${stamp}.000Z.md`),
+          `---\nemployee: 떠난${i}\nsavedAt: 2020-01-01T00:00:${stamp}.000Z\n---\n노트`,
+        );
+      }
+
+      // 현재 직원이 같은 cwd에서 퇴근하면 prune이 돈다.
+      await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
+      clockOut(store, 1);
+      created[0].emit({ kind: 'text', text: '코더 인계' });
+      created[0].emit({ kind: 'result', text: '', costUsd: 0 });
+
+      const dirs = fs
+        .readdirSync(base, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+      // 고아 폴더는 최신 10개만 남고(00·01 삭제), 현재 직원(코더) 폴더는 보존된다.
+      expect(dirs.filter((d) => d.startsWith('떠난직원'))).toHaveLength(10);
+      expect(dirs.some((d) => d.startsWith('떠난직원00'))).toBe(false);
+      expect(dirs.some((d) => d.startsWith('떠난직원01'))).toBe(false);
+      expect(dirs.some((d) => d.startsWith('떠난직원11'))).toBe(true);
+      expect(dirs.some((d) => d.includes('코더'))).toBe(true);
+    });
+
     it('출근하면 새 인스턴스로 최신 노트 본문을 systemPrompt에 실어 시작한다', async () => {
       await hireEmployee(store, '코더', tmpCwd, 'staff', SONNET);
       clockOut(store, 1);
