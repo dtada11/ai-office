@@ -63,9 +63,9 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
         </span>
 
         <Button
-          variant={atTop ? 'disabled' : 'default'}
+          variant={atTop || loading ? 'disabled' : 'default'}
           size="sm"
-          disabled={atTop}
+          disabled={atTop || loading}
           onClick={goUp}
           data-testid="folder-picker-up"
         >

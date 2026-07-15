@@ -152,4 +152,34 @@ describe('listDirectory', () => {
     const empty = listDirectory('');
     expect(blank).toEqual(empty);
   });
+
+  // 14. A directory symlink (Windows: junction) is listed, not silently dropped.
+  // fs.readdirSync's Dirent.isDirectory() uses lstat semantics and is false for
+  // symlinks/junctions (notably on Windows), so without following the link this
+  // entry would vanish from the listing even though opening it directly works.
+  it('includes a directory symlink/junction in the listing', () => {
+    const real = path.join(tmpRoot, 'real-target');
+    fs.mkdirSync(real);
+    const link = path.join(tmpRoot, 'link-to-target');
+    fs.symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
+
+    const result = listDirectory(tmpRoot);
+
+    expect(result.error).toBe(false);
+    expect(result.entries.map((e) => e.name).sort()).toEqual(['link-to-target', 'real-target']);
+  });
+
+  // 15. A broken symlink/junction (target removed) is safely excluded, never thrown.
+  it('excludes a broken symlink/junction without throwing', () => {
+    const real = path.join(tmpRoot, 'will-be-removed');
+    fs.mkdirSync(real);
+    const link = path.join(tmpRoot, 'broken-link');
+    fs.symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.rmSync(real, { recursive: true, force: true });
+
+    expect(() => listDirectory(tmpRoot)).not.toThrow();
+    const result = listDirectory(tmpRoot);
+    expect(result.error).toBe(false);
+    expect(result.entries.map((e) => e.name)).toEqual([]);
+  });
 });

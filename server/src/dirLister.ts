@@ -48,10 +48,29 @@ export function listDirectory(inputPath: string | undefined): DirListing {
 
   try {
     const dirents = fs.readdirSync(normalized, { withFileTypes: true });
-    const entries = dirents
-      .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
-      .map((d) => ({ name: d.name, path: path.join(normalized, d.name) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const entries: DirEntry[] = [];
+    for (const d of dirents) {
+      if (d.name.startsWith('.')) continue;
+      const fullPath = path.join(normalized, d.name);
+      if (d.isDirectory()) {
+        entries.push({ name: d.name, path: fullPath });
+      } else if (d.isSymbolicLink()) {
+        // Dirent.isDirectory() uses lstat semantics and is always false for
+        // symlinks/junctions (notably on Windows), so a symlinked directory
+        // would otherwise be silently dropped even though opening it directly
+        // works fine (see the statSync call above, which does follow links).
+        // Resolve the target with a single follow-through stat; a broken
+        // link, permission error, or cycle only excludes this one entry.
+        try {
+          if (fs.statSync(fullPath).isDirectory()) {
+            entries.push({ name: d.name, path: fullPath });
+          }
+        } catch {
+          // Broken symlink or unreadable target -- skip just this entry.
+        }
+      }
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
     return { path: normalized, parent: parentOf(normalized), entries, error: false };
   } catch {
     // Permission denied, or a transient read failure.
