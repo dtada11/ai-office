@@ -100,27 +100,40 @@ export function pngToSpriteData(pngBuffer: Buffer, width: number, height: number
  * Piece at bitmask M: col = M % 4, row = floor(M / 4).
  */
 export function parseWallPng(pngBuffer: Buffer): string[][][] {
-  const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
-  const sprites: string[][][] = [];
-  for (let mask = 0; mask < WALL_BITMASK_COUNT; mask++) {
-    const ox = (mask % WALL_GRID_COLS) * WALL_PIECE_WIDTH;
-    const oy = Math.floor(mask / WALL_GRID_COLS) * WALL_PIECE_HEIGHT;
-    const sprite: string[][] = [];
-    for (let r = 0; r < WALL_PIECE_HEIGHT; r++) {
-      const row: string[] = [];
-      for (let c = 0; c < WALL_PIECE_WIDTH; c++) {
-        const idx = ((oy + r) * png.width + (ox + c)) * 4;
-        const rv = png.data[idx];
-        const gv = png.data[idx + 1];
-        const bv = png.data[idx + 2];
-        const av = png.data[idx + 3];
-        row.push(rgbaToHex(rv, gv, bv, av));
+  try {
+    const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
+    const sprites: string[][][] = [];
+    for (let mask = 0; mask < WALL_BITMASK_COUNT; mask++) {
+      const ox = (mask % WALL_GRID_COLS) * WALL_PIECE_WIDTH;
+      const oy = Math.floor(mask / WALL_GRID_COLS) * WALL_PIECE_HEIGHT;
+      const sprite: string[][] = [];
+      for (let r = 0; r < WALL_PIECE_HEIGHT; r++) {
+        const row: string[] = [];
+        for (let c = 0; c < WALL_PIECE_WIDTH; c++) {
+          const idx = ((oy + r) * png.width + (ox + c)) * 4;
+          const rv = png.data[idx];
+          const gv = png.data[idx + 1];
+          const bv = png.data[idx + 2];
+          const av = png.data[idx + 3];
+          row.push(rgbaToHex(rv, gv, bv, av));
+        }
+        sprite.push(row);
       }
-      sprite.push(row);
+      sprites.push(sprite);
     }
-    sprites.push(sprite);
+    return sprites;
+  } catch (err) {
+    // Self-contained fallback (same posture as pngToSpriteData/decodePetPng): a
+    // single corrupt wall sheet must drop only itself, not abort the caller's
+    // whole-category loop and take every wall set down with it. 16 empty bitmask
+    // sprites render as transparent.
+    console.warn(
+      `[PngDecoder] Failed to parse wall PNG: ${err instanceof Error ? err.message : err}`,
+    );
+    return Array.from({ length: WALL_BITMASK_COUNT }, () =>
+      Array.from({ length: WALL_PIECE_HEIGHT }, () => new Array(WALL_PIECE_WIDTH).fill('')),
+    );
   }
-  return sprites;
 }
 
 /**
@@ -131,37 +144,51 @@ export function parseWallPng(pngBuffer: Buffer): string[][][] {
  * same on-screen size).
  */
 export function decodeCharacterPng(pngBuffer: Buffer): CharacterDirectionSprites {
-  const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
-  const charData: CharacterDirectionSprites = { down: [], up: [], right: [] };
-  const frameW = Math.floor(png.width / CHAR_FRAMES_PER_ROW) || CHAR_FRAME_W;
-  const frameH = Math.floor(png.height / CHARACTER_DIRECTIONS.length) || CHAR_FRAME_H;
+  try {
+    const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
+    const charData: CharacterDirectionSprites = { down: [], up: [], right: [] };
+    const frameW = Math.floor(png.width / CHAR_FRAMES_PER_ROW) || CHAR_FRAME_W;
+    const frameH = Math.floor(png.height / CHARACTER_DIRECTIONS.length) || CHAR_FRAME_H;
 
-  for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
-    const dir = CHARACTER_DIRECTIONS[dirIdx];
-    const rowOffsetY = dirIdx * frameH;
-    const frames: string[][][] = [];
+    for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
+      const dir = CHARACTER_DIRECTIONS[dirIdx];
+      const rowOffsetY = dirIdx * frameH;
+      const frames: string[][][] = [];
 
-    for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
-      const sprite: string[][] = [];
-      const frameOffsetX = f * frameW;
-      for (let y = 0; y < frameH; y++) {
-        const row: string[] = [];
-        for (let x = 0; x < frameW; x++) {
-          const idx = ((rowOffsetY + y) * png.width + (frameOffsetX + x)) * 4;
-          const r = png.data[idx];
-          const g = png.data[idx + 1];
-          const b = png.data[idx + 2];
-          const a = png.data[idx + 3];
-          row.push(rgbaToHex(r, g, b, a));
+      for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
+        const sprite: string[][] = [];
+        const frameOffsetX = f * frameW;
+        for (let y = 0; y < frameH; y++) {
+          const row: string[] = [];
+          for (let x = 0; x < frameW; x++) {
+            const idx = ((rowOffsetY + y) * png.width + (frameOffsetX + x)) * 4;
+            const r = png.data[idx];
+            const g = png.data[idx + 1];
+            const b = png.data[idx + 2];
+            const a = png.data[idx + 3];
+            row.push(rgbaToHex(r, g, b, a));
+          }
+          sprite.push(row);
         }
-        sprite.push(row);
+        frames.push(sprite);
       }
-      frames.push(sprite);
+      charData[dir] = frames;
     }
-    charData[dir] = frames;
-  }
 
-  return charData;
+    return charData;
+  } catch (err) {
+    // Self-contained fallback: a single corrupt character sheet drops only that
+    // one character, not the whole character-asset broadcast. Baseline-sized
+    // empty frames render as transparent.
+    console.warn(
+      `[PngDecoder] Failed to parse character PNG: ${err instanceof Error ? err.message : err}`,
+    );
+    const emptyFrames = (): string[][][] =>
+      Array.from({ length: CHAR_FRAMES_PER_ROW }, () =>
+        Array.from({ length: CHAR_FRAME_H }, () => new Array(CHAR_FRAME_W).fill('')),
+      );
+    return { down: emptyFrames(), up: emptyFrames(), right: emptyFrames() };
+  }
 }
 
 /**
