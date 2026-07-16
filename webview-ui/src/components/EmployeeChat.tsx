@@ -283,11 +283,25 @@ export function EmployeeChat({
     if (atBottom) setHasUnseenBelow(false);
   };
 
-  // The reply reported a model: drop the optimistic label, whether or not it
-  // agrees with the pick. What the session ran on is the only truth here.
+  // Reconcile against the authoritative roster: every employeeState broadcast
+  // hands the client a freshly-parsed `employee` object even when nothing
+  // about this employee changed (the whole roster is rebuilt off the wire on
+  // every broadcast), so this fires on any update, not just a model change.
+  // That's deliberate — a switch that failed re-broadcasts the SAME
+  // (unchanged) model to reconcile the client (see
+  // server/src/employees.ts setEmployeeModelFor's catch handler); keying off
+  // employee.model alone would never notice, since the value never differs
+  // from before the click, and "picked" would show the rejected model
+  // forever. A successful switch is confirmed later and indirectly too — by
+  // the employee's next actual reply reporting what it ran on — so there is
+  // no request/response pairing here either way. That means an unrelated
+  // broadcast for this employee (e.g. a costUsd tick mid-turn) can clear
+  // "picked" a little early; accepted trade-off, not a bug — the label just
+  // falls back to the (still-accurate at that moment) authoritative model
+  // until the real confirmation lands.
   useEffect(() => {
     setPicked('');
-  }, [employee.model]);
+  }, [employee]);
 
   // Listeners on the window, not on the header: bringing the window to the front
   // re-orders it in the DOM, which would drop a pointer capture held by the header.

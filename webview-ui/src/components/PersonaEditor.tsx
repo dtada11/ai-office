@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { EmployeeInfo } from '../hooks/useExtensionMessages.js';
 import { transport } from '../transport/index.js';
@@ -31,6 +31,29 @@ export function PersonaEditor({
   const [personaDraft, setPersonaDraft] = useState(employee.persona ?? '');
   const [justSaved, setJustSaved] = useState(false);
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
+  /** Persona value we last asked the server to save — set in save(), cleared
+   *  once reconciled below. Lets a fresh roster snapshot tell "confirmed"
+   *  (matches — leave 저장됨 up) apart from "didn't stick" (doesn't match —
+   *  a save that silently failed to persist would otherwise show 저장됨
+   *  forever, with nothing to ever contradict it). Null = no save in flight
+   *  to reconcile against. */
+  const lastSavedPersonaRef = useRef<string | null>(null);
+
+  // Every employeeState broadcast hands back a freshly-parsed `employee`
+  // object even when nothing about this employee changed (the whole roster
+  // is rebuilt off the wire each time), so this fires on any update, not
+  // just a persona change — including the confirmation setEmployeePersona
+  // itself triggers right after saving. On the common success path the
+  // persona already matches what we sent, so this is a no-op and 저장됨
+  // stays up exactly as before; it only reacts when a fresh snapshot
+  // disagrees with what we thought we'd saved.
+  useEffect(() => {
+    if (lastSavedPersonaRef.current === null) return;
+    if (employee.persona !== lastSavedPersonaRef.current) {
+      setJustSaved(false);
+      lastSavedPersonaRef.current = null;
+    }
+  }, [employee]);
 
   useEffect(() => {
     if (!drag) return;
@@ -65,6 +88,7 @@ export function PersonaEditor({
       persona: personaDraft,
     });
     setJustSaved(true);
+    lastSavedPersonaRef.current = personaDraft;
   };
 
   return (

@@ -1078,6 +1078,10 @@ export function setEmployeeModelFor(store: AgentStateStore, agentId: number, mod
         kind: 'result',
         text: `모델 변경 실패: ${err instanceof Error ? err.message : String(err)}`,
       });
+      // Re-send the authoritative roster (model unchanged) so a client that
+      // optimistically showed the new model reconciles back to the real one —
+      // otherwise the header label stays on a model the switch never applied.
+      broadcastStaff(store);
     });
 }
 
