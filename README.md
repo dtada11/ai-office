@@ -144,18 +144,32 @@ node dist/cli.js --port 3100
 # 이미지 빌드
 docker build -t pixel-agents:latest .
 
-# docker-compose로 실행 (상태 저장)
+# docker-compose로 실행 (권장 — 네임드 볼륨으로 상태 격리)
 docker-compose up -d
 
-# 또는 직접 실행
+# 또는 직접 실행 (docker-compose가 없을 때)
 docker run -d \
   -p 3100:3100 \
   -e "HOST=0.0.0.0" \
-  -v ~/.pixel-agents:/home/app/.pixel-agents \
+  -v pixel-agents-state:/home/app/.pixel-agents \
+  -v ./workspace:/workspace \
   pixel-agents:latest
 ```
 
 브라우저에서 `http://localhost:3100` 접속.
+
+**이미지 정보**:
+
+```
+$ docker images pixel-agents:latest
+SIZE: 1.28GB
+
+구성:
+- npm ci --production: 423MB
+- claude-code CLI (전역): 229MB
+- node:20-alpine 베이스: 130MB
+- 기타 (컴파일 산출물, 런타임): ~520MB
+```
 
 ### 상태 영속화
 
@@ -220,17 +234,50 @@ docker run \
 
 **리모트 서버에 배포할 때**: 역프록시(nginx, Caddy 등)나 VPN 뒤에 두고, TLS/SSL로 통신을 암호화하세요.
 
-### 다기기 접속
+### 다기기 접속 (현재 미지원)
 
-같은 로컬 네트워크의 다른 기기 브라우저에서 접속할 수 있습니다.
+**현재 상태**: 같은 로컬 네트워크의 다른 기기에서 직접 접속하는 것은 **작동하지 않습니다.**
 
-1. 서버를 실행한 머신의 IP를 확인합니다 (예: `192.168.1.100`).
-2. 다른 기기 브라우저에서 `http://192.168.1.100:3100` 접속.
-3. **원격 호스트 접속**이므로 token 입력 모달이 띄워집니다.
-4. 서버의 token을 입력 (환경변수로 설정했거나 `docker logs`에서 확인).
-5. localStorage에 저장되고, 이후 새로고침해도 유지됩니다.
+#### 작동하지 않는 이유
 
-**주의**: 다기기 접속은 LAN 범위 내에서만 권장합니다. 공개 인터넷에 노출하지 마세요.
+서버는 `0.0.0.0` 으로 바인딩되지만, 인증 검증이 loopback(`127.0.0.1`) 전용으로 설계되어 있습니다:
+
+- **WebSocket Origin 검증**: 원격 브라우저의 `Origin: http://192.168.1.x:3100` 은 거부되고(`4003 forbidden origin`), 토큰 없는 익명 클라이언트만 통과합니다.
+- **폴더 피커 접근**: `Host` 헤더가 loopback이 아니면 403 거부 → 직원 고용 불가.
+
+코드 예시 (`httpServer.ts:238` 주석):
+
+> _"Safe because the server binds 127.0.0.1 ... Revisit if the server ever binds a non-loopback address"_
+
+이 검증을 0.0.0.0 환경에 맞게 redesign하려면 **코드 수정이 필요**합니다 (현재 M2 범위 밖).
+
+#### 작동하는 대안: SSH 터널 / VPN
+
+브라우저가 `localhost` 로 접속하게 하면 **코드 변경 없이 전부 정상 작동**합니다:
+
+```bash
+# 원격 서버에서 컨테이너가 실행 중이라면:
+ssh -L 3100:localhost:3100 user@server
+
+# 로컬 브라우저:
+# http://localhost:3100 → 터널 경유 → 원격 서버의 localhost:3100
+```
+
+**이 방식의 장점**:
+
+- Origin·Host 검증이 자동으로 통과 (`localhost` = loopback).
+- 인증은 SSH 터널이 담당 → 추가 설정 불필요.
+
+#### ⚠️ 보안 경고 (매우 중요)
+
+**`HOST=0.0.0.0` 으로 포트를 열면**, 같은 네트워크의 누구나:
+
+- **Origin 헤더 없이 WebSocket에 접속해 직원 세션 스트림을 읽을 수 있습니다.**
+  (standalone `/ws` 는 Bearer 토큰을 요구하지 않음 — `httpServer.ts:269`)
+- **Authentication bypass**: Token을 아예 안 보냅니다.
+
+**신뢰할 수 없는 네트워크에 절대 `0.0.0.0` 으로 열지 마세요.**
+로컬 머신에서만 사용하거나, 필히 VPN/SSH 터널 뒤에 두세요.
 
 ---
 
@@ -238,7 +285,9 @@ docker run \
 
 - **이건 [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents)(MIT, 2026년 2월 시작) 기반입니다.** 2026년 7월 11일부터 작업했고, 커밋 54개·약 88개 파일·약 8,400줄을 더했습니다(데스크톱 앱 패키징 포함).
 - **설계 결정은 제가, 구현은 AI와 협업했습니다.** 위의 "설계 결정"과 "만들면서 만난 문제들"은 전부 제가 판단하고 지시한 것이고, 각 결정의 근거는 작업 로그에 남겼습니다. 코드를 읽고 설명하는 훈련을 병행하고 있습니다.
-- **아직 안 되는 것**: 다른 회사 AI(GPT·Gemini) 연결, 외부 기기 원격 접속, 그리고 **온보딩 안내** — Claude Code가 없거나 로그인이 안 된 상태에서 직원을 고용하면 지금은 조용히 실패합니다(안내 화면 미구현).
+- **아직 안 되는 것**: 다른 회사 AI(GPT·Gemini) 연결, 그리고 **온보딩 안내** — Claude Code가 없거나 로그인이 안 된 상태에서 직원을 고용하면 지금은 조용히 실패합니다(안내 화면 미구현).
+  - **외부 기기 원격 접속**: 현재 인증이 loopback(`127.0.0.1`) 전용으로 설계돼 있어 LAN IP 직접 접속은 `/ws`가 거부됩니다.
+    **대신 SSH 터널로 접속하면 코드 변경 없이 작동합니다** — 자세히는 위의 "다기기 접속" 절 참고.
 
 ## 크레딧 / 라이선스
 
