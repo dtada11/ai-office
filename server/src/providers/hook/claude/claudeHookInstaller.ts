@@ -34,17 +34,28 @@ function getHookScriptPath(): string {
   return path.join(os.homedir(), HOOK_SCRIPTS_DIR, CLAUDE_HOOK_SCRIPT_NAME);
 }
 
-/** Read and parse ~/.claude/settings.json. Returns empty object if missing or malformed. */
-function readClaudeSettings(): ClaudeSettings {
+/**
+ * Read and parse ~/.claude/settings.json.
+ *  - File genuinely absent  → `{}` (safe to create a fresh settings file).
+ *  - File present but unreadable/unparseable (malformed JSON, permission error,
+ *    or a partial write we caught mid-flight) → `null`.
+ *
+ * The two MUST stay distinct: a caller that writes (installHooks) treats `null`
+ * as "leave it alone". Collapsing both to `{}` — the previous behavior — let
+ * installHooks overwrite a malformed-but-populated settings.json with a
+ * hooks-only object, destroying the user's other Claude Code settings
+ * (permissions, env, model, mcpServers, ...). The atomic rename made that
+ * durable. Read-only callers (areHooksInstalled) treat `null` as "no hooks".
+ */
+function readClaudeSettings(): ClaudeSettings | null {
   const settingsPath = getClaudeSettingsPath();
+  if (!fs.existsSync(settingsPath)) return {};
   try {
-    if (fs.existsSync(settingsPath)) {
-      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as ClaudeSettings;
-    }
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as ClaudeSettings;
   } catch (e) {
-    console.error(`[Pixel Agents] Failed to read Claude settings: ${e}`);
+    console.error(`[Pixel Agents] Claude settings unreadable — leaving it untouched: ${e}`);
+    return null;
   }
-  return {};
 }
 
 /** Write settings back to ~/.claude/settings.json via atomic tmp + rename. */
@@ -97,7 +108,7 @@ function makeHookEntry(): ClaudeHookEntry {
 /** Check if Pixel Agents hooks are already installed in ~/.claude/settings.json. */
 export function areHooksInstalled(): boolean {
   const settings = readClaudeSettings();
-  if (!settings.hooks) return false;
+  if (!settings?.hooks) return false;
   const events = CLAUDE_HOOK_EVENTS;
   return events.every((event) => {
     const entries = settings.hooks?.[event];
@@ -112,6 +123,9 @@ export function areHooksInstalled(): boolean {
  */
 export function installHooks(): void {
   const settings = readClaudeSettings();
+  // null = settings.json exists but couldn't be read/parsed. Writing now would
+  // clobber the user's other settings with a hooks-only object — abort instead.
+  if (settings === null) return;
   if (!settings.hooks) {
     settings.hooks = {};
   }
@@ -142,7 +156,7 @@ export function installHooks(): void {
 /** Remove all Pixel Agents hook entries from ~/.claude/settings.json. Cleans up empty objects. */
 export function uninstallHooks(): void {
   const settings = readClaudeSettings();
-  if (!settings.hooks) return;
+  if (!settings?.hooks) return;
 
   let changed = false;
   for (const event of Object.keys(settings.hooks)) {

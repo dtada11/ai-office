@@ -93,6 +93,31 @@ describe('claudeHookInstaller', () => {
     expect(areHooksInstalled()).toBe(false);
   });
 
+  // 8a. installHooks must NOT overwrite a malformed settings.json — doing so
+  //     would wipe the user's other Claude settings the file still holds in text.
+  it('installHooks leaves a malformed settings.json untouched (no data loss)', () => {
+    const p = path.join(tmpBase, '.claude', 'settings.json');
+    const original = '{ "permissions": {"allow": ["Bash"]}, "model": "opus"  // oops trailing junk';
+    fs.writeFileSync(p, original);
+    expect(() => installHooks()).not.toThrow();
+    // The file is byte-identical: we refused to clobber what we couldn't parse.
+    expect(fs.readFileSync(p, 'utf-8')).toBe(original);
+  });
+
+  // 8b. installHooks preserves the user's other keys on a valid settings.json.
+  it('installHooks preserves other settings keys', () => {
+    const p = path.join(tmpBase, '.claude', 'settings.json');
+    fs.writeFileSync(
+      p,
+      JSON.stringify({ permissions: { allow: ['Bash'] }, model: 'opus' }, null, 2),
+    );
+    installHooks();
+    const settings = readSettings();
+    expect(settings.permissions).toEqual({ allow: ['Bash'] });
+    expect(settings.model).toBe('opus');
+    expect(settings.hooks).toBeTruthy();
+  });
+
   // 9. copyHookScript copies file
   it('copyHookScript copies to ~/.pixel-agents/hooks/', () => {
     // Create a mock extension path with dist/hooks/claude-hook.js
