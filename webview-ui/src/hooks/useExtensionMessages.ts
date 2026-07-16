@@ -256,6 +256,16 @@ export function useExtensionMessages(
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
 
+  // The big effect below intentionally only depends on [getOfficeState] so it
+  // subscribes to the transport once, not on every render. That means the
+  // `handler` closure it creates is frozen at mount time — a plain
+  // `isEditDirty?.()` call inside it would forever see the isEditMode/isDirty
+  // values from that first render (always false), never the caller's actual
+  // edit state. Route through a ref that's updated every render instead, so
+  // the handler always reads the latest editor state.
+  const isEditDirtyRef = useRef(isEditDirty);
+  isEditDirtyRef.current = isEditDirty;
+
   useEffect(() => {
     // Buffer agents from existingAgents until layout is loaded
     let pendingAgents: Array<{
@@ -300,7 +310,7 @@ export function useExtensionMessages(
 
       if (msg.type === 'layoutLoaded') {
         // Skip external layout updates while editor has unsaved changes
-        if (layoutReadyRef.current && isEditDirty?.()) {
+        if (layoutReadyRef.current && isEditDirtyRef.current?.()) {
           console.log('[Webview] Skipping external layout update — editor has unsaved changes');
           return;
         }

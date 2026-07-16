@@ -324,7 +324,16 @@ export class OfficeState {
     skipSpawnEffect?: boolean,
     folderName?: string,
   ): void {
-    if (this.characters.has(id)) return;
+    const existing = this.characters.get(id);
+    // A character mid-despawn (matrixEffect === 'despawn') is still in the map
+    // for MATRIX_EFFECT_DURATION while it animates out — see removeAgent(). If
+    // the same id is re-added in that window (fast clock-out/clock-in, or a WS
+    // reconnect re-sending existingAgents), don't no-op: the pending despawn's
+    // update() pass would delete this id from the map right after, permanently
+    // losing the character the caller just (re-)created. Fall through and
+    // recreate instead — its seat was already freed by removeAgent(), so normal
+    // seat assignment below works unchanged.
+    if (existing && existing.matrixEffect !== 'despawn') return;
 
     let palette: number;
     let hueShift: number;
