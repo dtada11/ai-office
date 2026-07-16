@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { HOOK_API_PREFIX } from '../src/constants.js';
 import type { HttpServerHandle } from '../src/httpServer.js';
-import { createHttpServer, isAllowedWsOrigin } from '../src/httpServer.js';
+import { createHttpServer, isAllowedHost, isAllowedWsOrigin } from '../src/httpServer.js';
 
 describe('isAllowedWsOrigin', () => {
   it('allows a missing Origin (non-browser callers: hooks, curl, native clients)', () => {
@@ -39,6 +39,57 @@ describe('isAllowedWsOrigin', () => {
 
   it('rejects a malformed origin', () => {
     expect(isAllowedWsOrigin('not a url')).toBe(false);
+  });
+});
+
+describe('isAllowedHost (DNS-rebinding guard)', () => {
+  it('allows loopback hosts with any port', () => {
+    expect(isAllowedHost('127.0.0.1:3100')).toBe(true);
+    expect(isAllowedHost('localhost:5173')).toBe(true);
+    expect(isAllowedHost('[::1]:3100')).toBe(true);
+    expect(isAllowedHost('localhost')).toBe(true);
+  });
+
+  it('rejects a rebound attacker host', () => {
+    expect(isAllowedHost('evil.com:3100')).toBe(false);
+  });
+
+  it('rejects a lookalike hostname (subdomain trick)', () => {
+    expect(isAllowedHost('127.0.0.1.evil.com:3100')).toBe(false);
+  });
+
+  it('rejects a missing Host header', () => {
+    // HTTP/1.1 always sends Host; its absence is treated as suspicious.
+    expect(isAllowedHost(undefined)).toBe(false);
+  });
+});
+
+describe('GET /api/list-dir host guard', () => {
+  let handle: HttpServerHandle;
+
+  beforeEach(async () => {
+    handle = await createHttpServer({ embedded: true, token: 't', store: new AgentStateStore() });
+  });
+  afterEach(async () => {
+    await handle.app.close();
+  });
+
+  it('serves a loopback Host', async () => {
+    const res = await handle.app.inject({
+      method: 'GET',
+      url: '/api/list-dir',
+      headers: { host: '127.0.0.1:3100' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects a rebound (non-loopback) Host with 403', async () => {
+    const res = await handle.app.inject({
+      method: 'GET',
+      url: '/api/list-dir',
+      headers: { host: 'evil.com' },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
 

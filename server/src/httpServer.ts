@@ -114,9 +114,13 @@ function registerHealthRoute(app: FastifyInstance): void {
  *  from reading the response cross-origin. GET (not a WebSocket message) so
  *  it doesn't need a core/asyncapi.yaml schema entry for what's just a query. */
 function registerListDirRoute(app: FastifyInstance): void {
-  app.get<{ Querystring: { path?: string } }>('/api/list-dir', async (request) => {
-    return listDirectory(request.query.path);
-  });
+  app.get<{ Querystring: { path?: string } }>(
+    '/api/list-dir',
+    { preHandler: requireLocalHost },
+    async (request) => {
+      return listDirectory(request.query.path);
+    },
+  );
 }
 
 /** Creates a new team project folder ("팀 프로젝트 만들기"). Unlike list-dir
@@ -141,7 +145,7 @@ function registerListDirRoute(app: FastifyInstance): void {
 function registerScaffoldTeamRoute(app: FastifyInstance): void {
   app.post<{ Body: { templateKey?: string; baseDir?: string; projectName?: string } }>(
     '/api/scaffold-team',
-    { preHandler: requireAllowedOrigin },
+    { preHandler: [requireLocalHost, requireAllowedOrigin] },
     async (request, reply) => {
       const { templateKey, baseDir, projectName } = request.body ?? {};
       if (!templateKey || !baseDir || !projectName) {
@@ -221,6 +225,32 @@ export function isAllowedWsOrigin(origin: string | undefined): boolean {
 async function requireAllowedOrigin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!isAllowedWsOrigin(request.headers.origin)) {
     reply.code(403).send({ ok: false, error: 'forbidden origin' });
+  }
+}
+
+/** True if the request's Host header names loopback. Unlike the Origin check,
+ *  this defends against DNS rebinding: an attacker page at evil.com rebound to
+ *  127.0.0.1 fetches itself same-origin (so it may send no Origin at all), but
+ *  the browser still sends `Host: evil.com` — the name it believes it dialed —
+ *  so a loopback-only Host allowlist rejects it. Safe because the server binds
+ *  127.0.0.1: every legitimate caller (our SPA, the Electron window, hook
+ *  scripts, curl) reaches it as localhost/127.0.0.1. Revisit if the server ever
+ *  binds a non-loopback address (e.g. a future Tailscale mode). Exported for tests. */
+export function isAllowedHost(host: string | undefined): boolean {
+  if (!host) return false; // HTTP/1.1 always sends Host; its absence is suspicious.
+  // Strip the port. IPv6 hosts are bracketed ("[::1]:3100"), so keep the bracket.
+  const hostname = host.startsWith('[')
+    ? host.slice(0, host.indexOf(']') + 1)
+    : (host.split(':')[0] ?? '');
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
+}
+
+/** preHandler for no-auth local routes (the folder picker's list-dir, and as a
+ *  second layer on scaffold-team): 403 unless the Host is loopback. Closes the
+ *  DNS-rebinding gap the Origin/CORS checks miss on a same-origin request. */
+async function requireLocalHost(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (!isAllowedHost(request.headers.host)) {
+    reply.code(403).send({ ok: false, error: 'forbidden host' });
   }
 }
 
