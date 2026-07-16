@@ -7,6 +7,7 @@ export function clearAgentActivity(
   agentId: number,
   agents: AgentStateStore,
   permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
+  waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
 ): void {
   if (!agent) return;
 
@@ -33,6 +34,9 @@ export function clearAgentActivity(
   agent.isWaiting = false;
   agent.permissionSent = false;
   cancelPermissionTimer(agentId, permissionTimers);
+  // Cancel the waiting timer too — the function name promises to clear ALL
+  // activity, and callers used to have to remember to do this separately.
+  cancelWaitingTimer(agentId, waitingTimers);
   agents.broadcast({ type: 'agentToolsClear', id: agentId });
   // Re-send background agent tools so webview re-creates their sub-agents
   for (const toolId of agent.backgroundAgentToolIds) {

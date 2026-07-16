@@ -1,3 +1,4 @@
+import type { StringDecoder } from 'string_decoder';
 import type * as vscode from 'vscode';
 
 export interface AgentState {
@@ -11,6 +12,12 @@ export interface AgentState {
   jsonlFile: string;
   fileOffset: number;
   lineBuffer: string;
+  /** Incremental UTF-8 decoder for the JSONL byte stream. Lazily created in
+   *  readNewLines. Reads are capped at 64KB, so a multi-byte character can
+   *  straddle a read boundary; the decoder buffers the incomplete trailing
+   *  bytes until the next read instead of emitting � for them. Reset (undefined)
+   *  whenever the agent is pointed at a new file (fileOffset back to 0). */
+  utf8Decoder?: StringDecoder;
   activeToolIds: Set<string>;
   activeToolStatuses: Map<string, string>;
   activeToolNames: Map<string, string>;

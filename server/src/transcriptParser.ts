@@ -306,14 +306,12 @@ export function processTranscriptLine(
           }
         } else {
           // New user text prompt — new turn starting
-          cancelWaitingTimer(agentId, waitingTimers);
-          clearAgentActivity(agent, agentId, agents, permissionTimers);
+          clearAgentActivity(agent, agentId, agents, permissionTimers, waitingTimers);
           agent.hadToolsInTurn = false;
         }
       } else if (typeof content === 'string' && content.trim()) {
         // New user text prompt — new turn starting
-        cancelWaitingTimer(agentId, waitingTimers);
-        clearAgentActivity(agent, agentId, agents, permissionTimers);
+        clearAgentActivity(agent, agentId, agents, permissionTimers, waitingTimers);
         agent.hadToolsInTurn = false;
       }
     } else if (record.type === 'queue-operation' && record.operation === 'enqueue') {

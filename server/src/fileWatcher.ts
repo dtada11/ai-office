@@ -20,6 +20,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import type * as vscode from 'vscode';
 
 const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
@@ -206,7 +207,13 @@ export function readNewLines(
     fs.closeSync(fd);
     agent.fileOffset += bytesToRead;
 
-    const text = agent.lineBuffer + buf.toString('utf-8');
+    // Decode through a persistent StringDecoder, not buf.toString(): the 64KB
+    // read cap can slice a multi-byte character (e.g. a 3-byte Hangul) across
+    // two reads, and a per-chunk toString() would turn both halves into �,
+    // garbling the text and sometimes breaking JSON.parse on a >64KB line. The
+    // decoder holds the incomplete trailing bytes back until the next read.
+    if (!agent.utf8Decoder) agent.utf8Decoder = new StringDecoder('utf8');
+    const text = agent.lineBuffer + agent.utf8Decoder.write(buf);
     const lines = text.split('\n');
     agent.lineBuffer = lines.pop() || '';
 
@@ -633,6 +640,7 @@ export function scanForTeammateFiles(
       existingTeammate.jsonlFile = file;
       existingTeammate.fileOffset = 0;
       existingTeammate.lineBuffer = '';
+      existingTeammate.utf8Decoder = undefined; // new file → drop any half-decoded bytes
       existingTeammate.lastDataAt = Date.now();
       existingTeammate.linesProcessed = 0;
       existingTeammate.isWaiting = false;
@@ -1325,10 +1333,8 @@ export function reassignAgentToFile(
   }
   pollingTimers.delete(agentId);
 
-  // Clear activity
-  cancelWaitingTimer(agentId, waitingTimers);
-  cancelPermissionTimer(agentId, permissionTimers);
-  clearAgentActivity(agent, agentId, agents, permissionTimers);
+  // Clear activity (clearAgentActivity cancels both the permission and waiting timers)
+  clearAgentActivity(agent, agentId, agents, permissionTimers, waitingTimers);
 
   // Permanently dismiss old file so scanners never re-adopt it as external
   dismissalTracker!.permanentlyDismiss(agent.jsonlFile);
@@ -1339,6 +1345,7 @@ export function reassignAgentToFile(
   agent.jsonlFile = newFilePath;
   agent.fileOffset = 0;
   agent.lineBuffer = '';
+  agent.utf8Decoder = undefined; // new file → drop any half-decoded bytes
   persistAgents();
 
   // Start watching new file
