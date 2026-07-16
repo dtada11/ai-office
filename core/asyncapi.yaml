@@ -205,6 +205,21 @@ components:
           type: string
         isExternal:
           type: boolean
+        isTeammate:
+          type: boolean
+          description: True when this agent is a teammate spawned by a lead (has a parent).
+        teammateName:
+          type: string
+          description: The teammate's role/name within its team.
+        parentAgentId:
+          type: integer
+          description: agentId of the lead this teammate belongs to.
+        teamName:
+          type: string
+          description: Name of the team this agent belongs to.
+        hooksOnly:
+          type: boolean
+          description: True when the agent has no transcript file (all state comes from hooks).
         palette:
           type: integer
           description: |
