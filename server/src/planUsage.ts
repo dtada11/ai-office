@@ -100,6 +100,11 @@ export class PlanUsageTracker {
   private calibrated = false;
   private sessionAnchor = 0;
   private weeklyAnchor = 0;
+  /** A tick already running. tick() returns this instead of starting a second
+   *  scan concurrently — two interval callers (the 60s tick and the 2min
+   *  recalibrate) can otherwise overlap if a scan runs long, double-counting
+   *  usage. */
+  private inFlightTick: Promise<PlanUsage> | null = null;
 
   constructor() {
     this.loadSnapshot();
@@ -135,8 +140,18 @@ export class PlanUsageTracker {
     }
   }
 
-  /** Incrementally scan JSONL files, recompute gauges, cache + return the message. */
-  async tick(): Promise<PlanUsage> {
+  /** Incrementally scan JSONL files, recompute gauges, cache + return the
+   *  message. Overlapping calls coalesce onto one in-flight run so two callers
+   *  never scan concurrently. */
+  tick(): Promise<PlanUsage> {
+    if (this.inFlightTick) return this.inFlightTick;
+    this.inFlightTick = this.runTick().finally(() => {
+      this.inFlightTick = null;
+    });
+    return this.inFlightTick;
+  }
+
+  private async runTick(): Promise<PlanUsage> {
     await this.scan();
     this.calibrate();
     this.prune();
@@ -276,7 +291,12 @@ export class PlanUsageTracker {
     this.snapshot.calibration = cal;
     this.calibrated = true;
     try {
-      fs.writeFileSync(getSnapshotPath(), JSON.stringify(this.snapshot, null, 2), 'utf-8');
+      // Atomic write (tmp + rename), same as layoutPersistence — a crash mid-write
+      // must not leave a truncated plan-usage.json.
+      const snapshotPath = getSnapshotPath();
+      const tmpPath = `${snapshotPath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(this.snapshot, null, 2), 'utf-8');
+      fs.renameSync(tmpPath, snapshotPath);
     } catch (err) {
       console.warn('[Pixel Agents] failed to persist plan-usage calibration:', err);
     }
