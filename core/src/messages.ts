@@ -42,6 +42,7 @@ export type ServerMessage =
   | SettingsLoaded
   | OfficeProvider
   | ExternalAssetDirectoriesUpdated
+  | AllowlistListed
   | WorkspaceFolders
   | AgentDiagnostics
   | SetupCheckResult
@@ -79,6 +80,8 @@ export type ClientMessage =
   | ClockOut
   | AgentPermissionDecision
   | AddToAllowlist
+  | ListAllowlist
+  | RemoveFromAllowlist
   | RefreshPlanUsage
   | SetOfficeProvider
   | RunSetupCheck
@@ -400,6 +403,26 @@ export interface ExternalAssetDirectoriesUpdated {
   dirs: string[];
 }
 
+export interface AllowlistListed {
+  type: 'allowlistListed';
+  employees: AllowlistEmployee[];
+}
+
+export interface AllowlistEmployee {
+  agentId: number;
+  name: string;
+  allow: AllowlistEntry[];
+}
+
+export interface AllowlistEntry {
+  tool: string;
+  match: ToolPermissionMatch;
+  value: string;
+  addedAt: string;
+}
+
+export type ToolPermissionMatch = 'exact' | 'dirPrefix';
+
 export interface WorkspaceFolders {
   type: 'workspaceFolders';
   folders: WorkspaceFolder[];
@@ -613,11 +636,21 @@ export interface AddToAllowlist {
   type: 'addToAllowlist';
   agentId: number;
   toolName: string;
-  match: AnonymousSchema_308;
+  match: ToolPermissionMatch;
   value: string;
 }
 
-export type AnonymousSchema_308 = 'exact' | 'dirPrefix';
+export interface ListAllowlist {
+  type: 'listAllowlist';
+}
+
+export interface RemoveFromAllowlist {
+  type: 'removeFromAllowlist';
+  agentId: number;
+  toolName: string;
+  match: ToolPermissionMatch;
+  value: string;
+}
 
 export interface RefreshPlanUsage {
   type: 'refreshPlanUsage';

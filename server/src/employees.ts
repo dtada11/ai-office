@@ -1058,6 +1058,22 @@ export function allowlistKeyFor(agentId: number): string | null {
   return current ? handoffKey(current.name) : null;
 }
 
+/** Everyone on the roster, with the name to show and the key their allowlist is
+ *  filed under — what the settings panel needs to label the permissions file,
+ *  which stores nothing but the opaque key.
+ *
+ *  The roster is the whole roster: `duty` says whether someone is at their desk
+ *  right now, not whether they work here. Filtering on it would empty the panel
+ *  the moment the office opens, since rehireSavedEmployees registers everyone
+ *  off duty and waits for the user to clock them in. */
+export function listAllowlistTargets(): Array<{ agentId: number; name: string; key: string }> {
+  return [...staff.entries()].map(([agentId, s]) => ({
+    agentId,
+    name: s.name,
+    key: handoffKey(s.name),
+  }));
+}
+
 /** Every request still waiting on the user — what a client that just connected has
  *  to be told about, or it would show an office with nobody asking for anything. */
 export function getPendingPermissionRequests(): Array<{ agentId: number; ask: PermissionAsk }> {

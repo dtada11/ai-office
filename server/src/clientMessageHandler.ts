@@ -13,6 +13,7 @@ import {
   getPendingPermissionRequests,
   hireEmployee,
   isEmployee,
+  listAllowlistTargets,
   listHandoffNotes,
   renameEmployee,
   resolveEmployeePermission,
@@ -27,7 +28,12 @@ import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
 import { runSetupCheck } from './setupCheck.js';
 import { killShellCommand, runShellCommand } from './shellRunner.js';
-import { addPermission, hasDangerousBashMetachars } from './toolPermissions.js';
+import {
+  addPermission,
+  hasDangerousBashMetachars,
+  loadToolPermissions,
+  removePermission,
+} from './toolPermissions.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -333,6 +339,30 @@ export function handleClientMessage(
       break;
     }
 
+    case 'listAllowlist':
+      send(allowlistListedMessage());
+      break;
+
+    case 'removeFromAllowlist': {
+      // Same rule as addToAllowlist above: the id names the employee, the server
+      // says who that is. Trusting a key off the wire would let an unauthenticated
+      // caller strip permissions off anyone — or, with a made-up key, silently
+      // report success against a bucket nobody owns.
+      const key = allowlistKeyFor(msg.agentId as number);
+      const toolName = msg.toolName as string | undefined;
+      const match = msg.match as string | undefined;
+      const value = msg.value as string | undefined;
+
+      if (!key || !toolName || !match || !value) break;
+
+      removePermission(key, toolName, match, value);
+      // Answer with the whole list rather than an ack: the panel then renders
+      // what the file actually holds, so a delete that matched nothing (already
+      // gone, stale client) can't leave a row on screen that no longer exists.
+      send(allowlistListedMessage());
+      break;
+    }
+
     case 'refreshPlanUsage':
       void ctx.onRefreshPlanUsage?.();
       break;
@@ -352,6 +382,27 @@ export function handleClientMessage(
       // require IDE-specific handling (not yet implemented for standalone)
       break;
   }
+}
+
+/** The roster joined to the permissions file, for the settings panel.
+ *
+ *  Everyone on the roster appears, including those with nothing allowed — the
+ *  panel is answering "what have I auto-allowed?", and an employee omitted for
+ *  having an empty list is indistinguishable from one who was never hired.
+ *
+ *  Permissions filed under a key no current employee resolves to (someone who
+ *  was fired) are left out: nothing on the roster claims them, so there is no
+ *  name to file them under and no agentId to delete them by. */
+function allowlistListedMessage(): Record<string, unknown> {
+  const data = loadToolPermissions();
+  return {
+    type: 'allowlistListed',
+    employees: listAllowlistTargets().map(({ agentId, name, key }) => ({
+      agentId,
+      name,
+      allow: data.byEmployee[key]?.allow ?? [],
+    })),
+  };
 }
 
 function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {

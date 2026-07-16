@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
+import type { AllowlistEmployee, AllowlistEntry } from '../../../core/src/messages.js';
 import type { OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
+import { AllowlistSection } from './AllowlistSection.js';
 import { ProviderPicker } from './ProviderPicker.js';
 import { Button } from './ui/Button.js';
 import { Checkbox } from './ui/Checkbox.js';
@@ -46,6 +48,30 @@ export function SettingsModal({
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const [providerMode, setProviderMode] = useState(officeProvider?.mode ?? 'subscription');
   const [providerSecret, setProviderSecret] = useState('');
+  const [allowlist, setAllowlist] = useState<AllowlistEmployee[]>([]);
+
+  // Ask on open, and listen for as long as the panel is up. The server answers
+  // `listAllowlist` and every `removeFromAllowlist` with the same full list, so
+  // this one subscription covers both the first paint and the refresh after a
+  // delete — there is no local mutation to keep in sync with the file.
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsubscribe = transport.onMessage((msg) => {
+      if (msg.type === 'allowlistListed') setAllowlist(msg.employees);
+    });
+    transport.send({ type: 'listAllowlist' });
+    return unsubscribe;
+  }, [isOpen]);
+
+  const removeAllowlistEntry = (agentId: number, entry: AllowlistEntry) => {
+    transport.send({
+      type: 'removeFromAllowlist',
+      agentId,
+      toolName: entry.tool,
+      match: entry.match,
+      value: entry.value,
+    });
+  };
 
   // The server is the authority: adopt what it reports, and drop whatever was
   // half-typed, so the panel never claims a setting that was not saved.
@@ -170,6 +196,8 @@ export function SettingsModal({
           </Button>
         )}
       </div>
+
+      <AllowlistSection employees={allowlist} onRemove={removeAllowlistEntry} />
     </Modal>
   );
 }
