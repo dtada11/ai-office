@@ -919,7 +919,7 @@ export async function hireEmployee(
   const provider = resolveProvider(ownProvider);
 
   const employee = new ClaudeEmployee(
-    name,
+    trimmedName,
     cwd,
     {
       onEvent: (event) => onEvent(store, runtime, agentId, event),
@@ -928,9 +928,14 @@ export async function hireEmployee(
     provider,
   );
 
+  // Store the trimmed name — not the raw one. handoffKey() and delegate() both
+  // key off name.trim(), and the duplicate-name guard above compares against the
+  // trimmed name; storing the raw " 민수 " would let a second "민수" slip past
+  // that guard yet still collide on the same handoff folder (notes overwriting
+  // each other) and make delegate("민수") ambiguous.
   staff.set(agentId, {
     employee,
-    name,
+    name: trimmedName,
     cwd,
     role,
     roleLabel,
@@ -965,7 +970,7 @@ export async function hireEmployee(
   broadcastStaff(store);
   saveStaff();
   console.log(
-    `[Pixel Agents] Hired "${name}" (${role}, agent ${agentId}, ${provider.mode}) in ${cwd}`,
+    `[Pixel Agents] Hired "${trimmedName}" (${role}, agent ${agentId}, ${provider.mode}) in ${cwd}`,
   );
   return agentId;
 }
@@ -1169,21 +1174,32 @@ export async function rehireSavedEmployees(
       registerOffDutyStaff(store, saved);
       continue;
     }
-    const agentId = await hireEmployee(
-      store,
-      saved.name,
-      saved.cwd,
-      saved.role ?? 'staff',
-      // Their own model outranks the office default: an employee put on Haiku
-      // stays on Haiku across a restart.
-      saved.model ?? model,
-      runtime,
-      saved.provider,
-      saved.roleLabel,
-      saved.persona,
-      saved.palette,
-      saved.hueShift,
-    );
+    // One bad roster entry must not take the whole startup down. If a saved
+    // employee's cwd was deleted/moved, or the session fails to spawn,
+    // hireEmployee() rejects — catch it per-entry and move on, rather than
+    // letting the rejection propagate out of this loop (the caller runs this
+    // as fire-and-forget, so an unhandled rejection would crash the process).
+    let agentId: number | undefined;
+    try {
+      agentId = await hireEmployee(
+        store,
+        saved.name,
+        saved.cwd,
+        saved.role ?? 'staff',
+        // Their own model outranks the office default: an employee put on Haiku
+        // stays on Haiku across a restart.
+        saved.model ?? model,
+        runtime,
+        saved.provider,
+        saved.roleLabel,
+        saved.persona,
+        saved.palette,
+        saved.hueShift,
+      );
+    } catch (err) {
+      console.error(`[Pixel Agents] Failed to rehire "${saved.name}" — skipping:`, err);
+      continue;
+    }
     if (seats && agentId !== undefined && saved.palette !== undefined) {
       seats[String(agentId)] = {
         ...seats[String(agentId)],

@@ -166,7 +166,12 @@ async function main(): Promise<void> {
     }
 
     // Everyone on the roster clocks back in (conversations start fresh).
-    void rehireSavedEmployees(store, getConfiguredModel(), runtime);
+    // Fire-and-forget, but never unhandled: rehireSavedEmployees already guards
+    // each roster entry, and this .catch is the last line of defense so a
+    // rejection here can never take the whole server process down.
+    void rehireSavedEmployees(store, getConfiguredModel(), runtime).catch((err) => {
+      console.error('[Pixel Agents] rehireSavedEmployees failed:', err);
+    });
 
     // ── Plan usage gauges: scan transcripts + broadcast every minute ──
     // A plan limit is a subscription's idea. An office running on an API key is
