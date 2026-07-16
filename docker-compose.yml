@@ -1,0 +1,22 @@
+services:
+  pixel-agents:
+    image: pixel-agents:latest
+    container_name: pixel-agents
+    ports:
+      - "3100:3100"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3100
+    volumes:
+      # M2: 상태 영속화 — server.json, 고용직원, 레이아웃, config, 에이전트 hooks
+      # Note: Windows에서 ${HOME}이 작동하지 않으므로 절대 경로 또는 .으로 상대 경로 사용
+      # 호스트 ~/.pixel-agents를 /home/app/.pixel-agents로 마운트
+      - ~/.pixel-agents:/home/app/.pixel-agents
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3100/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
