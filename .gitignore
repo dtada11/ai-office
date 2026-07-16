@@ -54,3 +54,7 @@ agent-orchestrator.yaml
 .ao/
 .serena/
 tasks/
+
+# docker-compose가 /workspace로 마운트하는 에이전트 작업 폴더.
+# 여기 생기는 건 직원들의 산출물이지 이 앱의 소스가 아니다.
+/workspace/
