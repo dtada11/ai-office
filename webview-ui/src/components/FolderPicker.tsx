@@ -75,10 +75,17 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const entryRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // Monotonic counter identifying the most recently *started* request. A
+  // slow response for a folder the user has since navigated away from
+  // (goTo/goUp/breadcrumb click firing before an earlier fetch returns)
+  // would otherwise clobber whatever the latest request already rendered.
+  const latestRequestIdRef = useRef(0);
+
   // `isRestore` marks an attempt to resume the saved last-opened path, as
   // opposed to an ordinary in-picker navigation. Only that kind of attempt
   // triggers the "path is gone, bounce back to the starting screen" fallback.
   const load = useCallback((path: string, isRestore = false): Promise<void> => {
+    const requestId = ++latestRequestIdRef.current;
     setLoading(true);
     return fetch(`/api/list-dir?path=${encodeURIComponent(path)}`)
       .then((res) => res.json() as Promise<DirListing>)
@@ -87,13 +94,20 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
         const fallback = fallbackAfterRestore(result, isRestore);
         if (fallback !== null) return load(fallback);
 
+        // A newer request has started since this one — drop this response
+        // instead of applying it, so only the latest navigation ever reaches
+        // the screen (and the confirmed-cwd persisted from it).
+        if (requestId !== latestRequestIdRef.current) return undefined;
+
         setListing(result);
         setFocusedIndex(-1);
         const toPersist = confirmedCwd(result);
         if (toPersist !== null) persistLastPath(toPersist);
         return undefined;
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestId === latestRequestIdRef.current) setLoading(false);
+      });
   }, []);
 
   // On open, resume the last-visited folder instead of the drive list --

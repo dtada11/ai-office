@@ -1,6 +1,12 @@
 import type { ClientMessage, ServerMessage } from '../../../core/src/messages.js';
 import type { MessageTransport } from './types.js';
 
+/** Cap on messages queued while disconnected. Without a bound, a long outage
+ *  during which the user keeps interacting queues messages forever; on
+ *  reconnect they'd all replay at once, including now-stale commands (e.g.
+ *  for a session that no longer exists). Keep only the most recent N. */
+const MAX_PENDING_MESSAGES = 50;
+
 /**
  * WebSocket transport for standalone browser mode.
  * Connects to the Pixel Agents server via WebSocket for bidirectional messaging.
@@ -66,8 +72,13 @@ export class WebSocketTransport implements MessageTransport {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      // Queue messages while connecting (flushed in onopen)
+      // Queue messages while connecting (flushed in onopen). Bounded so a
+      // long disconnect doesn't grow this without limit — drop the oldest
+      // queued message once at capacity.
       this.pendingMessages.push(message);
+      if (this.pendingMessages.length > MAX_PENDING_MESSAGES) {
+        this.pendingMessages.shift();
+      }
     }
   }
 

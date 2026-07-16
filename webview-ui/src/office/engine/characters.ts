@@ -30,6 +30,12 @@ function tileCenter(col: number, row: number): { x: number; y: number } {
   };
 }
 
+/** Per-character isActive value as of the previous updateCharacter() tick.
+ *  Used only to detect the false→true edge (see the WALK case below) — a
+ *  WeakMap keeps this out of the Character shape and lets entries drop with
+ *  the character itself, no manual cleanup needed. */
+const wasActiveByCharacter = new WeakMap<Character, boolean>();
+
 /** Direction from one tile to an adjacent tile */
 function directionBetween(
   fromCol: number,
@@ -96,6 +102,10 @@ export function updateCharacter(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
 ): void {
+  const wasActive = wasActiveByCharacter.get(ch) ?? ch.isActive;
+  const becameActiveThisTick = !wasActive && ch.isActive;
+  wasActiveByCharacter.set(ch, ch.isActive);
+
   ch.frameTimer += dt;
 
   switch (ch.state) {
@@ -289,8 +299,12 @@ export function updateCharacter(
         ch.moveProgress = 0;
       }
 
-      // If became active while wandering, repath to seat
-      if (ch.isActive && ch.seatId) {
+      // If became active while wandering, repath to seat. Edge-triggered
+      // (only the tick isActive flips false→true) so a manual walkToTile()
+      // command on a character that was already active — isActive never
+      // toggles for that — is left alone instead of being overridden every
+      // tick for the rest of the walk.
+      if (becameActiveThisTick && ch.seatId) {
         const seat = seats.get(ch.seatId);
         if (seat) {
           const lastStep = ch.path[ch.path.length - 1];
