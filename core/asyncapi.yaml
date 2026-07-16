@@ -161,6 +161,7 @@ components:
         - $ref: '#/components/schemas/ClockIn'
         - $ref: '#/components/schemas/ClockOut'
         - $ref: '#/components/schemas/AgentPermissionDecision'
+        - $ref: '#/components/schemas/AddToAllowlist'
         - $ref: '#/components/schemas/RefreshPlanUsage'
         - $ref: '#/components/schemas/SetOfficeProvider'
         - $ref: '#/components/schemas/RunSetupCheck'
@@ -1554,6 +1555,30 @@ components:
           const: setOnboardingDone
         done:
           type: boolean
+
+    AddToAllowlist:
+      description: |
+        Add a tool use to an employee's automode allowlist. Sent when the user
+        clicks "허용 + 다음부터 묻지 않기" on a permission card.
+      type: object
+      additionalProperties: false
+      required: [type, employeeKey, toolName, match, value]
+      properties:
+        type:
+          const: addToAllowlist
+        employeeKey:
+          type: string
+          description: Employee identifier (handoff key based on name)
+        toolName:
+          type: string
+          description: Tool name (Bash, Read, Grep, Glob, Edit, Write, etc.)
+        match:
+          type: string
+          enum: [exact, dirPrefix]
+          description: Match type — 'exact' for Bash commands, 'dirPrefix' for paths
+        value:
+          type: string
+          description: For Bash, the exact command; for Read/Grep/Glob/Edit/Write, the directory path
 
     # ── Supporting schemas ─────────────────────────────────────────
 

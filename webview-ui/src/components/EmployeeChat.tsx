@@ -4,6 +4,7 @@ import { hasDangerousBashMetachars } from '../../../server/src/toolPermissions.j
 import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExtensionMessages.js';
 import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
+import { computeEmployeeKey } from '../utils/employeeKey.js';
 import type { ChatPosition, ChatSize } from './chatWindowPosition.js';
 import { clampChatPosition, clampChatSize } from './chatWindowPosition.js';
 import type { ToolCategory } from './toolSummary.js';
@@ -394,14 +395,42 @@ export function EmployeeChat({
     onDecided(permission.requestId);
   };
 
-  const decideAndAllowNext = () => {
+  const decideAndAllowNext = async () => {
     if (!permission) return;
+
+    // Extract tool name and match type + value
+    const toolName = permission.toolName;
+    let match: 'exact' | 'dirPrefix' = 'exact';
+    let value = '';
+
+    if (toolName === 'Bash') {
+      match = 'exact';
+      value = ((permission.input as Record<string, unknown>) || {}).command as string;
+    } else if (['Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(toolName)) {
+      match = 'dirPrefix';
+      const path =
+        ((permission.input as Record<string, unknown>) || {}).file_path ||
+        ((permission.input as Record<string, unknown>) || {}).path;
+      value = (path as string) || '';
+    }
+
+    // Compute employee key and send allowlist update
+    if (value) {
+      const employeeKey = await computeEmployeeKey(employee.name);
+      transport.send({
+        type: 'addToAllowlist',
+        employeeKey,
+        toolName,
+        match,
+        value,
+      });
+    }
+
     // Send approval decision
     transport.send({
       type: 'agentPermissionDecision',
       requestId: permission.requestId,
       allow: true,
-      addToAllowlist: true, // Signal to server to add to tool-permissions.json
     });
     onDecided(permission.requestId);
   };

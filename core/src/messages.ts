@@ -78,6 +78,7 @@ export type ClientMessage =
   | ClockIn
   | ClockOut
   | AgentPermissionDecision
+  | AddToAllowlist
   | RefreshPlanUsage
   | SetOfficeProvider
   | RunSetupCheck
@@ -607,6 +608,16 @@ export interface AgentPermissionDecision {
   requestId: string;
   allow: boolean;
 }
+
+export interface AddToAllowlist {
+  type: 'addToAllowlist';
+  employeeKey: string;
+  toolName: string;
+  match: AnonymousSchema_308;
+  value: string;
+}
+
+export type AnonymousSchema_308 = 'exact' | 'dirPrefix';
 
 export interface RefreshPlanUsage {
   type: 'refreshPlanUsage';

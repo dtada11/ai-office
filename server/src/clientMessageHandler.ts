@@ -26,6 +26,7 @@ import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
 import { runSetupCheck } from './setupCheck.js';
 import { killShellCommand, runShellCommand } from './shellRunner.js';
+import { addPermission } from './toolPermissions.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -303,6 +304,23 @@ export function handleClientMessage(
     case 'agentPermissionDecision':
       resolveEmployeePermission(store, msg.requestId as string, msg.allow as boolean);
       break;
+
+    case 'addToAllowlist': {
+      const employeeKey = msg.employeeKey as string | undefined;
+      const toolName = msg.toolName as string | undefined;
+      const match = msg.match as 'exact' | 'dirPrefix' | undefined;
+      const value = msg.value as string | undefined;
+
+      if (employeeKey && toolName && match && value) {
+        addPermission(employeeKey, {
+          tool: toolName,
+          match,
+          value,
+          addedAt: new Date().toISOString(),
+        });
+      }
+      break;
+    }
 
     case 'refreshPlanUsage':
       void ctx.onRefreshPlanUsage?.();
