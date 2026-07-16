@@ -134,6 +134,106 @@ node dist/cli.js --port 3100
 
 **요구사항**: Node.js 18+, 그리고 [Claude Code CLI](https://code.claude.com/docs) 로그인(구독 모드) 또는 Anthropic API 키.
 
+## 헤드리스 상주 운영 (Docker)
+
+사무실을 리눅스 서버에 24시간 띄워두거나, 다른 기기 브라우저에서 접속하려면 Docker를 사용할 수 있습니다.
+
+### 빠른 시작
+
+```bash
+# 이미지 빌드
+docker build -t pixel-agents:latest .
+
+# docker-compose로 실행 (상태 저장)
+docker-compose up -d
+
+# 또는 직접 실행
+docker run -d \
+  -p 3100:3100 \
+  -e "HOST=0.0.0.0" \
+  -v ~/.pixel-agents:/home/app/.pixel-agents \
+  pixel-agents:latest
+```
+
+브라우저에서 `http://localhost:3100` 접속.
+
+### 상태 영속화
+
+컨테이너를 껐다 켜도 직원 정보·레이아웃·설정이 살아남도록, `docker-compose.yml`은 호스트의 `~/.pixel-agents` 디렉터리를 볼륨으로 마운트합니다. 이 디렉터리에는 다음이 저장됩니다:
+
+- `server.json` — 서버 token 및 PID
+- `employees.json` — 고용한 직원 정보
+- `layout.json` — 가구 배치
+- `config.json` — 기본 설정
+- `hooks/` — Claude 훅 스크립트
+
+컨테이너를 재시작해도 이 파일들이 보존되므로, **상태가 사라지지 않습니다.**
+
+### 보안 주의사항
+
+**⚠️ 중요**: 다음 조건을 반드시 지켜야 합니다.
+
+#### 1. Bearer Token 인증
+
+로컬(127.0.0.1/localhost)이 아닌 원격에서 접속할 때는 API 호출 시 Bearer token이 필요합니다. 서버는 환경변수 `PIXEL_AGENTS_TOKEN`에서 token을 읽습니다.
+
+```bash
+# token을 지정해서 실행
+docker run -e "PIXEL_AGENTS_TOKEN=your-secret-token-here" ...
+```
+
+또는 `docker logs`에서 자동 생성된 token을 확인하고, **원격 클라이언트가 localStorage에 수동으로 입력**합니다.
+
+#### 2. 호스트 자격증명 마운트 (선택)
+
+Claude CLI가 `/api/hooks`를 호출할 때, 컨테이너 안에 `claude` 명령이 필요합니다. 다음 두 방법 중 선택합니다:
+
+**방법 1: 호스트 자격증명 마운트 (빠르지만 보안 트레이드오프)**
+
+```bash
+docker run \
+  -v ~/.pixel-agents:/home/app/.pixel-agents \
+  -v ~/.claude:/home/app/.claude \  # ⚠️ 호스트의 Claude 자격증명을 노출
+  pixel-agents:latest
+```
+
+**장점**: 호스트의 Claude 구독을 그대로 사용 가능.
+**단점**: 호스트의 개인 자격증명(API 키, 구독 토큰)이 컨테이너에 들어가므로, **신뢰할 수 있는 로컬 네트워크에서만 사용하세요.**
+
+**방법 2: API 키 주입 (더 안전)**
+
+```bash
+docker run \
+  -e "ANTHROPIC_API_KEY=your-api-key" \
+  pixel-agents:latest
+```
+
+**장점**: 호스트 전체 자격증명을 노출하지 않고, 필요한 키만 전달.
+**단점**: 키를 관리해야 함.
+
+#### 3. 인터넷에 노출하지 마세요
+
+`docker run -p 3100:3100`은 **로컬 네트워크(LAN) 범위에서만** 사용하세요. 인터넷에 그냥 노출하면:
+
+- Bearer token이 네트워크에 노출돼 누구나 API를 호출할 수 있습니다.
+- `/ws` 엔드포인트를 통해 직원들의 세션을 접근할 수 있습니다.
+
+**리모트 서버에 배포할 때**: 역프록시(nginx, Caddy 등)나 VPN 뒤에 두고, TLS/SSL로 통신을 암호화하세요.
+
+### 다기기 접속
+
+같은 로컬 네트워크의 다른 기기 브라우저에서 접속할 수 있습니다.
+
+1. 서버를 실행한 머신의 IP를 확인합니다 (예: `192.168.1.100`).
+2. 다른 기기 브라우저에서 `http://192.168.1.100:3100` 접속.
+3. **원격 호스트 접속**이므로 token 입력 모달이 띄워집니다.
+4. 서버의 token을 입력 (환경변수로 설정했거나 `docker logs`에서 확인).
+5. localStorage에 저장되고, 이후 새로고침해도 유지됩니다.
+
+**주의**: 다기기 접속은 LAN 범위 내에서만 권장합니다. 공개 인터넷에 노출하지 마세요.
+
+---
+
 ## 솔직히 밝힙니다
 
 - **이건 [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents)(MIT, 2026년 2월 시작) 기반입니다.** 2026년 7월 11일부터 작업했고, 커밋 54개·약 88개 파일·약 8,400줄을 더했습니다(데스크톱 앱 패키징 포함).
