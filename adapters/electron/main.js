@@ -96,9 +96,17 @@ function createWindow(port) {
     backgroundColor: '#1e1e1e',
   });
   mainWindow.setMenuBarVisibility(false);
-  // Links that would open new windows go to the system browser instead.
+  // Links that would open new windows go to the system browser instead — but
+  // only http(s). Handing an arbitrary scheme (file:, smb:, ...) to the OS via
+  // openExternal could launch a local handler with an attacker-influenced path;
+  // restrict it to web URLs.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const { protocol } = new URL(url);
+      if (protocol === 'http:' || protocol === 'https:') shell.openExternal(url);
+    } catch {
+      // Malformed URL — ignore.
+    }
     return { action: 'deny' };
   });
   // Closing the window hides it — the office keeps running in the tray. Only a
