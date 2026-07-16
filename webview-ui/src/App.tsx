@@ -14,6 +14,7 @@ import { PersonaEditor } from './components/PersonaEditor.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { TokenGauge } from './components/TokenGauge.js';
+import { TokenInputModal } from './components/TokenInputModal.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
@@ -108,6 +109,16 @@ function App() {
     clearOfficeNotice,
     handoffNotes,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
+
+  // M4: 원격 클라이언트 token 입력 모달
+  const isRemoteClient =
+    isBrowserRuntime && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  const [tokenModalOpen, setTokenModalOpen] = useState(isRemoteClient);
+
+  const handleTokenSubmit = (token: string) => {
+    localStorage.setItem('pixel-agents-token', token);
+    setTokenModalOpen(false);
+  };
 
   /** Chat windows the user has open. Render order IS stacking order, so the last
    *  entry is the front-most window. */
@@ -590,6 +601,9 @@ function App() {
       {showMigrationNotice && (
         <MigrationNotice onDismiss={() => setMigrationNoticeDismissed(true)} />
       )}
+
+      {/* M4: 원격 클라이언트 token 입력 모달 */}
+      <TokenInputModal isOpen={tokenModalOpen} onTokenSubmit={handleTokenSubmit} />
     </div>
   );
 }
