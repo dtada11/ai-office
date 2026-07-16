@@ -1,13 +1,36 @@
-import { describe, expect,it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
-  checkAutoApproval,
+  employeeKey,
   hasDangerousBashMetachars,
   normalizePath,
   pathMatches,
 } from '../src/toolPermissions.js';
 
 describe('toolPermissions', () => {
+  describe('employeeKey', () => {
+    // 허용목록의 키는 반드시 이름에서 나와야 한다. 세션 id로 키를 잡으면
+    // /clear 하거나 퇴근·출근할 때마다 세션 id가 새로 발급되어, 사용자가
+    // "다음부터 묻지 않기"로 쌓아둔 허용목록이 통째로 사라진다.
+    it('같은 이름이면 항상 같은 키 — 세션이 바뀌어도 허용목록이 유지되어야 한다', () => {
+      expect(employeeKey('사이트담당')).toBe(employeeKey('사이트담당'));
+    });
+
+    it('다른 이름이면 다른 키 — 한 직원의 허용이 다른 직원에게 새면 안 된다', () => {
+      expect(employeeKey('사이트담당')).not.toBe(employeeKey('코더'));
+    });
+
+    // ClaudeEmployee.sessionId 는 세션이 스스로를 알리기 전까지 '' 다.
+    // 그 상태로 키를 잡으면 일찍 움직인 직원들이 전부 '' 버킷을 공유한다.
+    it('빈 이름도 빈 키를 만들지 않는다 — 공용 버킷이 생기면 허용이 새어나간다', () => {
+      expect(employeeKey('')).not.toBe('');
+    });
+
+    it('공백만 다른 이름은 같은 키로 뭉개지지 않는다', () => {
+      expect(employeeKey('김 만수')).not.toBe(employeeKey('김만수'));
+    });
+  });
+
   describe('hasDangerousBashMetachars', () => {
     it('blocks command chaining with ;', () => {
       expect(hasDangerousBashMetachars('ls; rm -rf /')).toBe(true);

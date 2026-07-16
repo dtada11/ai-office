@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -5,6 +6,30 @@ import * as path from 'path';
  * Tool permission allowlist — one per employee, stored in ~/.pixel-agents/tool-permissions.json
  * Fail-closed: if the file is missing or corrupted, automode is simply disabled, not a crash
  */
+
+/** Stable identity for an employee, derived from their name. A sanitized name for
+ *  legibility plus a short hash so two names that sanitize alike stay separate.
+ *
+ *  Must key off the *name*, never the session id: session ids are reissued on
+ *  /clear and on clock-out/clock-in, which would silently drop the whole
+ *  allowlist. Worse, `ClaudeEmployee.sessionId` starts as '' and is only filled
+ *  once the session announces itself — so keying on it would put every employee
+ *  that acts early under the same '' bucket, leaking one employee's allowances
+ *  to another.
+ *
+ *  employees.ts re-exports this as handoffKey so an employee's allowlist and
+ *  their handoff notes share one identity. Defined here (not there) because
+ *  employees.ts already imports employee.ts, and employee.ts needs this too —
+ *  the reverse edge would be a cycle. */
+export function employeeKey(name: string): string {
+  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+  const safe = name
+    .trim()
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return safe ? `${safe}-${hash}` : hash;
+}
 
 export interface ToolPermission {
   tool: string;

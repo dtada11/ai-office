@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { EmployeeProvider } from '../../core/src/messages.js';
 import { buildEnv } from './aiProvider.js';
 import { getContextLimit } from './claudeSettings.js';
-import { checkAutoApproval, hasDangerousBashMetachars } from './toolPermissions.js';
+import { checkAutoApproval, employeeKey, hasDangerousBashMetachars } from './toolPermissions.js';
 
 type Sdk = typeof import('@anthropic-ai/claude-agent-sdk', {
   with: { 'resolution-mode': 'import' },
@@ -215,9 +215,11 @@ export class ClaudeEmployee implements Employee {
             return { behavior: 'allow' } as SdkPermissionResult;
           }
 
-          // Stage 1 automode: check allowlist, but only for non-Bash tools.
-          // Bash commands are re-verified at matching time to catch file edits.
-          const permission = checkAutoApproval(this.sessionId, toolName, toolInput);
+          // Stage 1 automode: the user's own allowlist, grown by clicking
+          // "don't ask again". Keyed by name — never by sessionId, which is ''
+          // until the session announces itself and is reissued on /clear and on
+          // clock-out, either of which would silently drop the whole allowlist.
+          const permission = checkAutoApproval(employeeKey(this.name), toolName, toolInput);
           if (permission) {
             // Re-verify Bash metacharacters at matching time (file is untrusted input).
             // Fail-closed: if suspicious, fall through to human approval.

@@ -12,7 +12,6 @@
  * through askPermission, which asks the webview and waits.
  */
 
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -30,6 +29,7 @@ import {
   type PermissionAsk,
 } from './employee.js';
 import { readEmployees, type SavedEmployee, writeEmployees } from './employeePersistence.js';
+import { employeeKey } from './toolPermissions.js';
 import type { AgentState } from './types.js';
 
 /** How long a permission request waits for the user before being denied. */
@@ -523,16 +523,15 @@ export function getHandoffDir(cwd: string, name: string): string {
 /** Filesystem-safe folder segment identifying an employee within a cwd. A
  *  sanitized name for legibility, plus a short hash of the full name so two
  *  distinct names that sanitize to the same string still get separate folders
- *  (the whole point here is that notes never cross). */
-function handoffKey(name: string): string {
-  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
-  const safe = name
-    .trim()
-    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
-  return safe ? `${safe}-${hash}` : hash;
-}
+ *  (the whole point here is that notes never cross).
+ *
+ *  Lives in toolPermissions.ts so employee.ts can key its allowlist off the same
+ *  identity without importing this module (employees.ts already imports
+ *  employee.ts, so the reverse edge would be a cycle). Two copies would drift —
+ *  and a drifting identity means an employee's allowlist silently detaches from
+ *  their handoff notes. Re-exported here because this module is where callers
+ *  expect it. */
+const handoffKey = employeeKey;
 
 /** Resolve a handoff-note folder from a client-supplied key, but only if it is a
  *  direct child of this cwd's handoff dir. The key arrives over the wire (a hire
