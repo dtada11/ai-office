@@ -43,6 +43,11 @@ export interface AgentState {
   providerId?: string;
   /** Set when SessionEnd(reason=clear) fires; cleared when SessionStart(source=clear) reassigns */
   pendingClear?: boolean;
+  /** Generation counter for pendingClear. Each SessionEnd(clear/resume) bumps it;
+   *  the grace-period safety-net timer captures the value at schedule time and
+   *  only cleans up if it still matches — so a stale timer from an earlier clear
+   *  cycle can't tear down a later, legitimate one that reused pendingClear. */
+  pendingClearToken?: number;
   /** Hook-generated tool ID for PreToolUse/PostToolUse correlation */
   currentHookToolId?: string;
   /** Tool name from the most recent PreToolUse, used to correlate a later SubagentStart

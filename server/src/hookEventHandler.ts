@@ -392,14 +392,20 @@ export class HookEventHandler {
 
     if (expectsFollowUp) {
       agent.pendingClear = true;
+      // Tag this clear cycle so the safety-net timer below can tell whether the
+      // pendingClear it later sees is still ITS cycle, or a newer one that reused
+      // the flag (rapid consecutive /clear within the grace period).
+      const token = (agent.pendingClearToken = (agent.pendingClearToken ?? 0) + 1);
       this.markAgentWaiting(agent, agentId);
       if (debug)
         console.log(
           `[Pixel Agents] Hook: Agent ${agentId} - SessionEnd(reason=${reason}), awaiting possible SessionStart`,
         );
-      // Safety net: if SessionStart never arrives, clean up the zombie agent
+      // Safety net: if SessionStart never arrives, clean up the zombie agent —
+      // but only if this is still the same clear cycle (token match), so a stale
+      // timer can't tear down a later legitimate SessionEnd(clear).
       setTimeout(() => {
-        if (agent.pendingClear) {
+        if (agent.pendingClear && agent.pendingClearToken === token) {
           agent.pendingClear = false;
           this.lifecycleCallbacks.onSessionEnd?.(agentId, reason);
         }
