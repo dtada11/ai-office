@@ -43,10 +43,9 @@ temp
 *.tar
 *.tar.gz
 
-# Editor
+# Editor (keep build-time config, exclude cache)
 .editorconfig
-.prettierrc*
-eslint*
+.eslintcache
 
 # Documentation
 README.md

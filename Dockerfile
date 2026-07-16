@@ -8,9 +8,10 @@ FROM node:20-alpine AS builder
 WORKDIR /build
 
 # 의존성 설치용 패키지 파일만 먼저 복사 (Docker 캐시 활용)
+# npm workspaces: 루트 lock만 있고 각 workspace package.json은 따로 있음
 COPY package.json package-lock.json ./
-COPY server/package.json server/package-lock.json ./server/
-COPY webview-ui/package.json webview-ui/package-lock.json ./webview-ui/
+COPY server/package.json ./server/
+COPY webview-ui/package.json ./webview-ui/
 
 # npm install
 RUN npm ci
@@ -30,8 +31,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 # claude CLI 설치 (subscription 모드 지원)
-# 참고: claude는 Node.js 기반이므로 npm으로 설치 가능
-RUN npm install -g @anthropic-ai/claude
+# 참고: claude-code는 Node.js 기반이므로 npm으로 설치 가능
+RUN npm install -g @anthropic-ai/claude-code
 
 # non-root 유저 생성
 RUN addgroup -g 1001 -S app && \
@@ -44,8 +45,9 @@ COPY --from=builder --chown=app:app /build/dist ./dist
 
 # 런타임 의존성만 설치
 # package.json + package-lock.json 복사 후 npm ci --production
+# --ignore-scripts: prepare(husky) 등 빌드 도구 스크립트는 runtime에 불필요
 COPY --chown=app:app package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --production --ignore-scripts
 
 # 유저 전환
 USER app
