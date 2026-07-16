@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { hasDangerousBashMetachars } from '../../../server/src/toolPermissions.js';
 import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExtensionMessages.js';
 import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
@@ -393,6 +394,18 @@ export function EmployeeChat({
     onDecided(permission.requestId);
   };
 
+  const decideAndAllowNext = () => {
+    if (!permission) return;
+    // Send approval decision
+    transport.send({
+      type: 'agentPermissionDecision',
+      requestId: permission.requestId,
+      allow: true,
+      addToAllowlist: true, // Signal to server to add to tool-permissions.json
+    });
+    onDecided(permission.requestId);
+  };
+
   const editDiff = permission ? editDiffFields(permission.toolName, permission.input) : undefined;
 
   return (
@@ -547,10 +560,37 @@ export function EmployeeChat({
               {formatToolInput(permission.input)}
             </div>
           )}
-          <div className="flex items-center gap-16 pt-2">
+          <div className="flex items-center gap-8 pt-2">
             <Button variant="default" size="sm" onClick={() => decide(true)}>
               허용
             </Button>
+            {/* 세 번째 버튼: Bash 메타문자 체크 */}
+            {permission.toolName === 'Bash' &&
+            hasDangerousBashMetachars(
+              ((permission.input as Record<string, unknown>).command as string) || '',
+            ) ? (
+              <Button
+                variant="default"
+                size="sm"
+                disabled
+                title="연쇄 실행·치환·리다이렉션 메타문자가 포함되어 자동 허용 불가"
+              >
+                자동 허용 불가
+              </Button>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={decideAndAllowNext}
+                title={
+                  permission.toolName === 'Bash'
+                    ? `${permission.input ? (permission.input as Record<string, unknown>).command : ''} — 다음부터 묻지 않기`
+                    : '다음부터 묻지 않기'
+                }
+              >
+                허용 + 다음부터 묻지 않기
+              </Button>
+            )}
             <Button
               variant="default"
               size="sm"
