@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { hasDangerousBashMetachars } from '../../../server/src/toolPermissions.js';
 import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExtensionMessages.js';
 import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
+import { hasDangerousBashMetachars } from '../utils/bashSafety.js';
 import { computeEmployeeKey } from '../utils/employeeKey.js';
 import type { ChatPosition, ChatSize } from './chatWindowPosition.js';
 import { clampChatPosition, clampChatSize } from './chatWindowPosition.js';
@@ -403,15 +403,16 @@ export function EmployeeChat({
     let match: 'exact' | 'dirPrefix' = 'exact';
     let value = '';
 
+    const inputObj =
+      typeof permission.input === 'string' ? {} : (permission.input as Record<string, unknown>);
+
     if (toolName === 'Bash') {
       match = 'exact';
-      value = ((permission.input as Record<string, unknown>) || {}).command as string;
+      value = (inputObj.command as string) || '';
     } else if (['Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(toolName)) {
       match = 'dirPrefix';
-      const path =
-        ((permission.input as Record<string, unknown>) || {}).file_path ||
-        ((permission.input as Record<string, unknown>) || {}).path;
-      value = (path as string) || '';
+      const path = (inputObj.file_path || inputObj.path) as string | undefined;
+      value = path || '';
     }
 
     // Compute employee key and send allowlist update
@@ -596,7 +597,9 @@ export function EmployeeChat({
             {/* 세 번째 버튼: Bash 메타문자 체크 */}
             {permission.toolName === 'Bash' &&
             hasDangerousBashMetachars(
-              ((permission.input as Record<string, unknown>).command as string) || '',
+              (typeof permission.input === 'string'
+                ? ''
+                : ((permission.input as Record<string, unknown>).command as string)) || '',
             ) ? (
               <Button
                 variant="default"
@@ -613,7 +616,11 @@ export function EmployeeChat({
                 onClick={decideAndAllowNext}
                 title={
                   permission.toolName === 'Bash'
-                    ? `${permission.input ? (permission.input as Record<string, unknown>).command : ''} — 다음부터 묻지 않기`
+                    ? `${
+                        permission.input && typeof permission.input !== 'string'
+                          ? (permission.input as Record<string, unknown>).command || ''
+                          : ''
+                      } — 다음부터 묻지 않기`
                     : '다음부터 묻지 않기'
                 }
               >
