@@ -85,7 +85,8 @@ export class PixelAgentsServer {
     }
 
     // Start our own server
-    const token = crypto.randomUUID();
+    // Use PIXEL_AGENTS_TOKEN env if set, otherwise generate a new UUID
+    const token = process.env.PIXEL_AGENTS_TOKEN ?? crypto.randomUUID();
     const store = options?.store;
 
     const { app, port } = await createHttpServer({

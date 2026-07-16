@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node modules (rebuilt in container)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs (rebuild in container)
+dist
+build
+
+# Development tools
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test & coverage
+coverage
+.nyc_output
+__tests__
+e2e
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Temporary
+tmp
+temp
+*.tmp
+
+# Large files
+*.zip
+*.tar
+*.tar.gz
+
+# Editor
+.editorconfig
+.prettierrc*
+eslint*
+
+# Documentation
+README.md
+CHANGELOG.md
+docs/
+
+# Electron build artifacts
+out/
+release/
+
+# Optional npm cache
+.npm
+
+# Vercel
+.vercel

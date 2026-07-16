@@ -211,6 +211,13 @@ async function main(): Promise<void> {
 
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 
+    // ── Remote access token (for headless/container mode) ──
+    // When PIXEL_AGENTS_TOKEN env is set, use it; otherwise a random token is generated.
+    const isContainerMode = args.host !== '127.0.0.1';
+    if (isContainerMode || process.env.PIXEL_AGENTS_TOKEN) {
+      console.log(`  Auth token for remote access: ${config.token}\n`);
+    }
+
     // ── Graceful shutdown ──
     async function shutdown(): Promise<void> {
       console.log('\nShutting down...');
