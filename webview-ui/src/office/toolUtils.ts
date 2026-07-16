@@ -1,4 +1,4 @@
-import { DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, ZOOM_MAX,ZOOM_MIN } from '../constants.js';
+import { ZOOM_DEFAULT_DPR_FACTOR, ZOOM_MIN } from '../constants.js';
 
 /** Map status prefixes back to tool names for animation selection */
 const STATUS_TO_TOOL: Record<string, string> = {
@@ -21,29 +21,10 @@ export function extractToolName(status: string): string | null {
   return first || null;
 }
 
-/** Compute a default integer zoom level (device pixels per sprite pixel).
- * Considers both device pixel ratio and viewport size to show a reasonable
- * portion of the office without excessive scrolling on wide displays. */
+/** Compute a default integer zoom level (device pixels per sprite pixel) */
 export function defaultZoom(): number {
   const dpr = window.devicePixelRatio || 1;
-
-  // Layout size in world pixels (zoom level 1)
-  const officeWidthPx = DEFAULT_COLS * TILE_SIZE; // ~320px
-  const officeHeightPx = DEFAULT_ROWS * TILE_SIZE; // ~176px
-
-  // Viewport size
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  // Fit office into ~80% of viewport (leave room for UI)
-  const zoomFromWidth = (viewportWidth * 0.8) / officeWidthPx;
-  const zoomFromHeight = (viewportHeight * 0.8) / officeHeightPx;
-  const zoomFromViewport = Math.min(zoomFromWidth, zoomFromHeight);
-
-  // Apply device pixel ratio to maintain relative sizes on high-DPI displays
-  const baseZoom = Math.max(1, zoomFromViewport * dpr);
-
-  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(baseZoom)));
+  return Math.max(ZOOM_MIN, Math.round(ZOOM_DEFAULT_DPR_FACTOR * dpr));
 }
 
 // ── Provider capabilities (tool taxonomy for rendering decisions) ────────────
