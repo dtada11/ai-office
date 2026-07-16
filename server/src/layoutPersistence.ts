@@ -30,7 +30,12 @@ export function readLayoutFromFile(): Record<string, unknown> | null {
   }
 }
 
-export function writeLayoutToFile(layout: Record<string, unknown>): void {
+/** Persist the layout. Returns true on success, false if the write failed
+ *  (disk full, permissions, ...). The caller that acts on a user's "save"
+ *  (clientMessageHandler's saveLayout) checks this so it can tell the webview
+ *  the save didn't stick, instead of the user believing a lost layout was kept
+ *  and finding it rolled back on restart. */
+export function writeLayoutToFile(layout: Record<string, unknown>): boolean {
   const filePath = getLayoutFilePath();
   const dir = path.dirname(filePath);
   try {
@@ -41,8 +46,10 @@ export function writeLayoutToFile(layout: Record<string, unknown>): void {
     const tmpPath = filePath + '.tmp';
     fs.writeFileSync(tmpPath, json, 'utf-8');
     fs.renameSync(tmpPath, filePath);
+    return true;
   } catch (err) {
     console.error('[Pixel Agents] Failed to write layout file:', err);
+    return false;
   }
 }
 

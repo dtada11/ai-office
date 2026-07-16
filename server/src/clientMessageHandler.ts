@@ -103,7 +103,17 @@ export function handleClientMessage(
 
     case 'saveLayout':
       if (msg.layout) {
-        writeLayoutToFile(msg.layout as Record<string, unknown>);
+        const saved = writeLayoutToFile(msg.layout as Record<string, unknown>);
+        if (!saved) {
+          // The write failed (disk full, permissions). Tell the user now — a
+          // silent failure leaves them believing the layout is saved when it
+          // will roll back on the next restart.
+          store.broadcast({
+            type: 'officeNotice',
+            level: 'error',
+            text: '레이아웃 저장 실패 — 디스크 공간이나 권한을 확인하세요. 이 변경은 재시작 시 사라집니다.',
+          });
+        }
       }
       break;
 
