@@ -49,18 +49,30 @@ export function renderMatrixEffect(
   const progress = ch.matrixEffectTimer / MATRIX_EFFECT_DURATION;
   const isSpawn = ch.matrixEffect === 'spawn';
   const time = ch.matrixEffectTimer;
-  const totalSweep = MATRIX_SPRITE_ROWS + MATRIX_TRAIL_LENGTH;
+  // Sweep the actual sprite's pixel dimensions, not the built-in pack's fixed
+  // 16x24 (MATRIX_SPRITE_COLS/ROWS) — a custom higher-res pack (e.g. 32x64)
+  // would otherwise only ever animate its top-left 16x24 corner, leaving the
+  // rest of the sprite either undrawn (spawn) or instantly cut (despawn).
+  // Same "actual size, 16 as fallback" pattern renderer.ts already uses for
+  // charScale (spriteData[0]?.length || 16).
+  const spriteCols = spriteData[0]?.length || MATRIX_SPRITE_COLS;
+  const spriteRows = spriteData.length || MATRIX_SPRITE_ROWS;
+  const totalSweep = spriteRows + MATRIX_TRAIL_LENGTH;
 
-  for (let col = 0; col < MATRIX_SPRITE_COLS; col++) {
-    // Stagger: each column starts at a slightly different time
-    const stagger = (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
+  for (let col = 0; col < spriteCols; col++) {
+    // Stagger: each column starts at a slightly different time. Seeds are
+    // generated at MATRIX_SPRITE_COLS length (see matrixEffectSeeds() below);
+    // wrap around for sprites wider than that instead of defaulting the
+    // extra columns to zero stagger (which would sweep them with no offset).
+    const stagger =
+      (ch.matrixEffectSeeds[col % ch.matrixEffectSeeds.length] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
     const colProgress = Math.max(
       0,
       Math.min(1, (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE)),
     );
     const headRow = colProgress * totalSweep;
 
-    for (let row = 0; row < MATRIX_SPRITE_ROWS; row++) {
+    for (let row = 0; row < spriteRows; row++) {
       const pixel = spriteData[row]?.[col];
       const hasPixel = pixel && pixel !== '';
       const distFromHead = headRow - row;
