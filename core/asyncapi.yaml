@@ -1562,13 +1562,17 @@ components:
         clicks "허용 + 다음부터 묻지 않기" on a permission card.
       type: object
       additionalProperties: false
-      required: [type, employeeKey, toolName, match, value]
+      required: [type, agentId, toolName, match, value]
       properties:
         type:
           const: addToAllowlist
-        employeeKey:
-          type: string
-          description: Employee identifier (handoff key based on name)
+        agentId:
+          type: integer
+          description: |
+            Which employee. The server resolves the allowlist identity from its own
+            roster — the client never sends a key. A key off the wire would be an
+            unverifiable claim, and this server can bind 0.0.0.0, where /ws accepts
+            Origin-less callers with no token at all.
         toolName:
           type: string
           description: Tool name (Bash, Read, Grep, Glob, Edit, Write, etc.)

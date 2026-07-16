@@ -1046,6 +1046,18 @@ export function isEmployee(agentId: number): boolean {
   return staff.has(agentId);
 }
 
+/** The allowlist identity for a hired employee, derived here from the roster.
+ *
+ *  Clients send an agentId and the server resolves the identity — never the other
+ *  way round. A client-supplied key would let anyone who can reach the port write
+ *  into any employee's allowlist, and this server can bind 0.0.0.0, where /ws
+ *  takes Origin-less callers with no token at all. Returns null for an unknown
+ *  agentId so a bad id writes nothing instead of creating a stray bucket. */
+export function allowlistKeyFor(agentId: number): string | null {
+  const current = staff.get(agentId);
+  return current ? handoffKey(current.name) : null;
+}
+
 /** Every request still waiting on the user — what a client that just connected has
  *  to be told about, or it would show an office with nobody asking for anything. */
 export function getPendingPermissionRequests(): Array<{ agentId: number; ask: PermissionAsk }> {

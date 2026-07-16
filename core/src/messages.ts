@@ -611,7 +611,7 @@ export interface AgentPermissionDecision {
 
 export interface AddToAllowlist {
   type: 'addToAllowlist';
-  employeeKey: string;
+  agentId: number;
   toolName: string;
   match: AnonymousSchema_308;
   value: string;

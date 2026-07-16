@@ -4,7 +4,7 @@ import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExt
 import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
 import { hasDangerousBashMetachars } from '../utils/bashSafety.js';
-import { computeEmployeeKey } from '../utils/employeeKey.js';
+import { allowlistEntryFor } from './allowlistEntry.js';
 import type { ChatPosition, ChatSize } from './chatWindowPosition.js';
 import { clampChatPosition, clampChatSize } from './chatWindowPosition.js';
 import type { ToolCategory } from './toolSummary.js';
@@ -398,32 +398,17 @@ export function EmployeeChat({
   const decideAndAllowNext = async () => {
     if (!permission) return;
 
-    // Extract tool name and match type + value
-    const toolName = permission.toolName;
-    let match: 'exact' | 'dirPrefix' = 'exact';
-    let value = '';
+    const entry = allowlistEntryFor(permission.toolName, permission.input);
 
-    const inputObj =
-      typeof permission.input === 'string' ? {} : (permission.input as Record<string, unknown>);
-
-    if (toolName === 'Bash') {
-      match = 'exact';
-      value = (inputObj.command as string) || '';
-    } else if (['Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(toolName)) {
-      match = 'dirPrefix';
-      const path = (inputObj.file_path || inputObj.path) as string | undefined;
-      value = path || '';
-    }
-
-    // Compute employee key and send allowlist update
-    if (value) {
-      const employeeKey = await computeEmployeeKey(employee.name);
+    // agentId, not a key we computed — the server owns identity. A key from here
+    // would be a claim the server cannot check.
+    if (entry) {
       transport.send({
         type: 'addToAllowlist',
-        employeeKey,
-        toolName,
-        match,
-        value,
+        agentId: employee.agentId,
+        toolName: permission.toolName,
+        match: entry.match,
+        value: entry.value,
       });
     }
 

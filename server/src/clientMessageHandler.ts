@@ -6,6 +6,7 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import { getConfiguredModel } from './claudeSettings.js';
 import { readConfig, writeConfig } from './configPersistence.js';
 import {
+  allowlistKeyFor,
   clockIn,
   clockOut,
   fireEmployee,
@@ -26,7 +27,7 @@ import { getLatestPlanUsage } from './planUsage.js';
 import { claudeProvider } from './providers/index.js';
 import { runSetupCheck } from './setupCheck.js';
 import { killShellCommand, runShellCommand } from './shellRunner.js';
-import { addPermission } from './toolPermissions.js';
+import { addPermission, hasDangerousBashMetachars } from './toolPermissions.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -306,19 +307,29 @@ export function handleClientMessage(
       break;
 
     case 'addToAllowlist': {
-      const employeeKey = msg.employeeKey as string | undefined;
+      // The identity comes from the roster, never from the client. A key off the
+      // wire would let anyone who can reach the port write into any employee's
+      // allowlist — and this server can bind 0.0.0.0, where /ws accepts
+      // Origin-less callers with no token.
+      const key = allowlistKeyFor(msg.agentId as number);
       const toolName = msg.toolName as string | undefined;
       const match = msg.match as 'exact' | 'dirPrefix' | undefined;
       const value = msg.value as string | undefined;
 
-      if (employeeKey && toolName && match && value) {
-        addPermission(employeeKey, {
-          tool: toolName,
-          match,
-          value,
-          addedAt: new Date().toISOString(),
-        });
-      }
+      if (!key || !toolName || !match || !value) break;
+
+      // Second gate. The button already refuses these, but the button is on the
+      // other side of a socket — this side cannot assume it ran. Fail closed:
+      // a command that could chain, substitute or redirect never becomes a
+      // standing permission, because `ls; rm -rf /` in the file is permanent.
+      if (toolName === 'Bash' && (match !== 'exact' || hasDangerousBashMetachars(value))) break;
+
+      addPermission(key, {
+        tool: toolName,
+        match,
+        value,
+        addedAt: new Date().toISOString(),
+      });
       break;
     }
 
