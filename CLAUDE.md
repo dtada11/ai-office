@@ -152,7 +152,6 @@ scripts/
   run-e2e.mjs                        Playwright wrapper (run-id namespacing, video attach flags)
   generate-e2e-inventory.mjs         Splices test list into e2e/README.md (CI drift check)
   build-allure-report.mjs            Combine e2e+server+webview Allure results
-  assemble-vercel-output.mjs         Stage /reports/allure/ for Vercel deploy
   asset-manager.html                 Unified furniture editor (positions + metadata)
   jsonl-viewer.html                  Standalone JSONL transcript inspector
   wall-tile-editor.html              Wall sprite editor
