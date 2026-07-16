@@ -795,7 +795,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   }
 
   dispose() {
-    this.pixelAgentsServer?.stop();
+    void this.pixelAgentsServer?.stop(); // async now; dispose doesn't await
     this.pixelAgentsServer = null;
     this.runtime.dispose();
     this.layoutWatcher?.dispose();

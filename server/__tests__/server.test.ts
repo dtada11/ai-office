@@ -162,7 +162,7 @@ describe('PixelAgentsServer', () => {
   it('deletes server.json on stop', async () => {
     await server.start();
     expect(fs.existsSync(serverJsonPath)).toBe(true);
-    server.stop();
+    await server.stop();
     expect(fs.existsSync(serverJsonPath)).toBe(false);
   });
 
@@ -175,7 +175,7 @@ describe('PixelAgentsServer', () => {
     );
     // Server never started (it would reuse), just stop
     const server2 = new PixelAgentsServer();
-    server2.stop();
+    await server2.stop();
     expect(fs.existsSync(serverJsonPath)).toBe(true);
   });
 

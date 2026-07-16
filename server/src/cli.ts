@@ -212,19 +212,28 @@ async function main(): Promise<void> {
     console.log(`\n  Pixel Agents server running at http://${args.host}:${config.port}\n`);
 
     // ── Graceful shutdown ──
-    function shutdown(): void {
+    async function shutdown(): Promise<void> {
       console.log('\nShutting down...');
       clearInterval(planUsageInterval);
       clearInterval(planCalibrateInterval);
       disposeShellRunner();
       disposeEmployees();
       runtime.dispose();
-      server.stop();
+      // Await the server close so WS clients get a clean close frame — but never
+      // hang on it: a stuck close still exits within the fallback window.
+      const forceExit = setTimeout(() => process.exit(0), 3000);
+      forceExit.unref();
+      try {
+        await server.stop();
+      } catch (err) {
+        console.error('[Pixel Agents] error during shutdown:', err);
+      }
+      clearTimeout(forceExit);
       process.exit(0);
     }
 
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', () => void shutdown());
+    process.on('SIGTERM', () => void shutdown());
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);

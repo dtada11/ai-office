@@ -121,10 +121,12 @@ export class PixelAgentsServer {
     return this.config;
   }
 
-  /** Stop the server and clean up server.json (only if we own it). */
-  stop(): void {
+  /** Stop the server and clean up server.json (only if we own it). Awaits the
+   *  Fastify close so in-flight WebSocket clients get a clean close frame
+   *  instead of a dropped connection. */
+  async stop(): Promise<void> {
     if (this.app) {
-      this.app.close();
+      await this.app.close();
       this.app = null;
     }
     if (this.ownsServer) {
