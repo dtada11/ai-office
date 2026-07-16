@@ -250,7 +250,9 @@ export function FolderPicker({ isOpen, onClose, onSelect }: FolderPickerProps) {
           폴더만 보여드려요 · 파일은 표시하지 않아요
         </span>
 
-        <div className="flex flex-col border-2 border-border max-h-64 overflow-y-auto">
+        {/* max-h는 px다 — index.css가 Tailwind --spacing을 1px로 재정의한다(픽셀아트 프로젝트).
+            표준 Tailwind 감각으로 max-h-64를 쓰면 256px이 아니라 64px(≈행 2개)이 된다. */}
+        <div className="flex flex-col border-2 border-border max-h-256 overflow-y-auto">
           {loading && (
             <div className="flex items-center gap-4 p-6" data-testid="folder-picker-loading">
               <span className="w-6 h-6 rounded-full shrink-0 bg-status-active pixel-pulse" />
