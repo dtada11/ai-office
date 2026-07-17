@@ -262,6 +262,8 @@ export function handleClientMessage(
         undefined, // palette — brand-new interactive hire, not a rehire
         undefined, // hueShift — same
         msg.handoffFromKey as string | undefined,
+        undefined, // savedPermissionKey — brand-new interactive hire, not a rehire
+        msg.teamRoot as string | undefined,
       ).catch((err) => {
         console.error('[Pixel Agents] hire failed:', err);
         store.broadcast({

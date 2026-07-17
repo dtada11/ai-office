@@ -88,6 +88,11 @@ vi.mock('../src/employeePersistence.js', () => ({
 
 const SONNET = 'claude-sonnet-5';
 const WORK = path.join(tmpHome, 'work');
+/** A scaffolded team folder: the root, and the one subfolder a teammate is
+ *  actually hired into. Everything outside TEAM_ROOT is another project. */
+const TEAM_ROOT = path.join(tmpHome, 'team');
+const TEAM_TESTS = path.join(TEAM_ROOT, 'tests');
+const TEAM_SRC = path.join(TEAM_ROOT, 'src');
 
 function permission(tool: string, match: 'exact' | 'dirPrefix', value: string): ToolPermission {
   return { tool, match, value, addedAt: '2026-07-17T14:32:00.000Z' };
@@ -126,6 +131,51 @@ function autoApproved(name: string, command: string): boolean {
   return key !== null && checkAutoApproval(key, 'Bash', { command }) !== null;
 }
 
+/** Would this employee's look at a path go through without asking? Read and
+ *  Grep/Glob are asked separately because checkAutoApproval reads a different
+ *  input field per tool — file_path vs path. */
+function canRead(name: string, filePath: string): boolean {
+  const key = keyOf(name);
+  return key !== null && checkAutoApproval(key, 'Read', { file_path: filePath }) !== null;
+}
+
+function canSearch(name: string, tool: 'Grep' | 'Glob', dir: string): boolean {
+  const key = keyOf(name);
+  return key !== null && checkAutoApproval(key, tool, { path: dir }) !== null;
+}
+
+/** Every rule filed under this employee, whatever the tool. */
+function permissionsOf(name: string): ToolPermission[] {
+  const key = keyOf(name);
+  return key === null ? [] : (loadToolPermissions().byEmployee[key]?.allow ?? []);
+}
+
+/** hireEmployee's tail is a run of optional positional args; a team hire only
+ *  ever sets the last one. Named here so a future insertion breaks loudly. */
+function hireInTeam(
+  store: AgentStateStore,
+  name: string,
+  cwd: string,
+  teamRoot: string | undefined,
+): Promise<number | undefined> {
+  return hireEmployee(
+    store,
+    name,
+    cwd,
+    'staff',
+    SONNET,
+    undefined, // runtime
+    undefined, // ownProvider
+    undefined, // roleLabel
+    undefined, // persona
+    undefined, // palette
+    undefined, // hueShift
+    undefined, // handoffFromKey
+    undefined, // savedPermissionKey
+    teamRoot,
+  );
+}
+
 /** Close the office and open it again from a saved roster — the restart path. */
 async function restart(roster: SavedEmployee[]): Promise<AgentStateStore> {
   disposeEmployees();
@@ -152,6 +202,7 @@ afterEach(() => {
   sessions.length = 0;
   fs.rmSync(path.join(tmpHome, '.pixel-agents'), { recursive: true, force: true });
   fs.rmSync(WORK, { recursive: true, force: true });
+  fs.rmSync(TEAM_ROOT, { recursive: true, force: true });
   vi.clearAllMocks();
 });
 
@@ -286,6 +337,111 @@ describe('고아 청소 — 아무도 쓸 수 없는 항목만 지운다', () =>
 
     expect(autoApproved('사이트담당', 'npm run deploy')).toBe(true);
     expect(loadToolPermissions().byEmployee['떠난사람-deadbeef']).toBeUndefined();
+  });
+});
+
+// 팀 폴더로 고용하면 팀 루트 읽기 권한이 자동으로 붙는다. 46번 재현실험에서
+// 증명된 것의 배관: 담당폴더(tests) 밖의 src·docs를 읽어야 하는 검증담당이
+// 파일마다 결재를 기다리다 죽었다. 손으로 발급했더니 살아났고, 이제 고용이 한다.
+describe('팀 고용 — 팀 루트 읽기 권한 자동 발급', () => {
+  it('T-1: teamRoot를 주고 고용 → 팀 루트 밑 파일에 Read·Grep·Glob 셋 다 승인', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '검증담당', TEAM_TESTS, TEAM_ROOT);
+
+    // 자기 담당 폴더(cwd)가 아니라 남의 폴더를 읽는 것이 요점이다
+    expect(canRead('검증담당', path.join(TEAM_SRC, 'employees.ts'))).toBe(true);
+    expect(canSearch('검증담당', 'Grep', TEAM_SRC)).toBe(true);
+    expect(canSearch('검증담당', 'Glob', TEAM_SRC)).toBe(true);
+  });
+
+  // 🔴 오늘 사람이 두 번 틀린 자리다. checkAutoApproval은 도구 이름을 먼저 거른다
+  // (`if (perm.tool !== toolName) continue`) — Read 허용은 Grep을 영원히 안 덮는다.
+  // 그래서 3건이고, 이 테스트가 그 3건을 1건으로 줄이려는 다음 사람을 막는다.
+  it('T-2: Read 규칙은 Grep을 덮지 않는다 — 그래서 발급이 3건이다', async () => {
+    const store = new AgentStateStore();
+    const agentId = await hireEmployee(store, '읽기만', TEAM_TESTS, 'staff', SONNET);
+    // Read 하나만 손으로 발급 — 자동발급이 Read 1건이었다면 이 상태였을 것이다
+    addPermission(allowlistKeyFor(agentId!)!, permission('Read', 'dirPrefix', TEAM_ROOT));
+
+    expect(canRead('읽기만', path.join(TEAM_SRC, 'employees.ts'))).toBe(true);
+    expect(canSearch('읽기만', 'Grep', TEAM_SRC)).toBe(false);
+    expect(canSearch('읽기만', 'Glob', TEAM_SRC)).toBe(false);
+  });
+
+  // 온보딩 첫 고용·손 고용·퇴근자 복귀가 전부 teamRoot 없이 여기로 온다.
+  // 그 경로들이 조용히 권한을 얻으면, 사용자가 허락한 적 없는 허용이 생긴다.
+  it('T-3: teamRoot 없이 고용 → 권한 0건', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '손고용', TEAM_TESTS, undefined);
+
+    expect(permissionsOf('손고용')).toEqual([]);
+    expect(canRead('손고용', path.join(TEAM_SRC, 'employees.ts'))).toBe(false);
+  });
+
+  // 서버는 클라이언트가 보낸 teamRoot를 그냥 믿지 않는다. "이 사람이 실제로 그
+  // 폴더에서 일한다"는 것 외엔 아무것도 안 믿는 가드 — 틀려도 과다 허용 쪽으로는
+  // 안 틀린다.
+  it('T-4: cwd가 teamRoot 밖이면 → 권한 0건 (클라이언트 주장을 안 믿는다)', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '남의사람', WORK, TEAM_ROOT);
+
+    expect(permissionsOf('남의사람')).toEqual([]);
+    expect(canRead('남의사람', path.join(TEAM_SRC, 'employees.ts'))).toBe(false);
+  });
+
+  // 경계가 실재하는지 — 팀 루트를 열어준 것이지 디스크를 열어준 게 아니다.
+  it('T-5: 팀 루트 밖 파일은 여전히 승인 안 된다', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '검증담당', TEAM_TESTS, TEAM_ROOT);
+
+    expect(canRead('검증담당', path.join(WORK, 'secret.env'))).toBe(false);
+    expect(canSearch('검증담당', 'Grep', WORK)).toBe(false);
+    // 이름이 팀 루트로 시작할 뿐인 형제 폴더도 남이다 (dirPrefix는 경계 인식)
+    expect(canRead('검증담당', `${TEAM_ROOT}-backup/secret.env`)).toBe(false);
+  });
+
+  // 읽기를 넓히는 것이지 쓰기·실행을 넓히는 게 아니다. 발급 목록에 Edit·Write·
+  // Bash가 슬며시 끼는 것을 막는다.
+  it('T-6: 쓰기·실행은 발급하지 않는다 — 읽기 3종뿐', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '검증담당', TEAM_TESTS, TEAM_ROOT);
+
+    expect(
+      permissionsOf('검증담당')
+        .map((p) => p.tool)
+        .sort(),
+    ).toEqual(['Glob', 'Grep', 'Read']);
+    expect(
+      checkAutoApproval(keyOf('검증담당')!, 'Write', {
+        file_path: path.join(TEAM_SRC, 'employees.ts'),
+      }),
+    ).toBeNull();
+    expect(autoApproved('검증담당', 'rm -rf /')).toBe(false);
+  });
+
+  // 팀은 4~5명이고 사용자는 같은 로스터에서 연속으로 고용한다. 첫 명만 권한을
+  // 받고 나머지가 조용히 못 받는 것이 이 배관의 대표적 실패 모양이다.
+  it('T-7: 같은 로스터에서 연속 고용 — 전원이 권한을 받는다', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '개발담당', path.join(TEAM_ROOT, 'src'), TEAM_ROOT);
+    await hireInTeam(store, '검증담당', TEAM_TESTS, TEAM_ROOT);
+    await hireInTeam(store, '팀장', TEAM_ROOT, TEAM_ROOT); // cwd == teamRoot 인 사람도 있다
+
+    for (const name of ['개발담당', '검증담당', '팀장']) {
+      expect(canSearch(name, 'Grep', TEAM_SRC)).toBe(true);
+    }
+  });
+
+  // 재시작은 hireEmployee를 다시 지나가지만 teamRoot는 로스터에 없다(SavedEmployee에
+  // 안 넣었다). 그래도 권한이 살아야 한다 — 버킷은 permissionKey로 살아있고 그 키가
+  // replay되기 때문이다. 이게 성립해야 "재발급 불필요"라는 설계가 맞다.
+  it('T-8: 재시작 — teamRoot가 로스터에 없어도 팀 권한이 살아남는다', async () => {
+    const store = new AgentStateStore();
+    await hireInTeam(store, '검증담당', TEAM_TESTS, TEAM_ROOT);
+
+    await restart(savedRoster());
+
+    expect(canSearch('검증담당', 'Grep', TEAM_SRC)).toBe(true);
   });
 });
 

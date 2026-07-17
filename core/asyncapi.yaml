@@ -1309,6 +1309,18 @@ components:
             from listHandoffNotes/handoffNotesListed) — so a differently-named
             hire can pick up where someone else left off. Omitted = a plain
             first-shift start with no note.
+        teamRoot:
+          type: string
+          description: |
+            The scaffolded team folder this hire's cwd sits inside, sent only
+            when the hire came from a scaffold-team roster. Present = grant this
+            employee read access (Read/Grep/Glob) across the whole team folder,
+            so someone working in one subfolder can read a teammate's without a
+            prompt per file. Omitted (hand-typed cwd, onboarding, rehire) =
+            grant nothing.
+
+            A hint, not a fact: the server grants only if cwd really is inside
+            it, so a wrong or forged value widens nothing.
 
     FireEmployee:
       description: End an employee's session and remove their character.

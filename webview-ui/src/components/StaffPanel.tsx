@@ -228,6 +228,11 @@ export function StaffPanel({
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
   // '' = "없음 (새로 시작)" — the default, plain first-shift hire.
   const [handoffFromKey, setHandoffFromKey] = useState('');
+  // '' = this hire asks for no team-folder read access — the default, and what a
+  // hand-typed cwd always gets. Only a roster pick fills it (from
+  // scaffoldTeamRoot below), and editing cwd by hand empties it again: the form
+  // no longer holds the folder the roster put there, so the claim would be stale.
+  const [hireTeamRoot, setHireTeamRoot] = useState('');
 
   // Which employee's title is being edited inline, and the draft text for it.
   const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
@@ -251,6 +256,11 @@ export function StaffPanel({
   // pick from to prefill the hire form. Hiring itself still requires the
   // explicit 고용 click; nothing here starts a session.
   const [scaffoldRoster, setScaffoldRoster] = useState<ScaffoldRosterEntry[] | null>(null);
+
+  // The folder the roster above was scaffolded into. Outlives any single hire on
+  // purpose: a team is 4~5 people hired one after another off this same roster,
+  // so clearing it after one would leave the rest silently unpermissioned.
+  const [scaffoldTeamRoot, setScaffoldTeamRoot] = useState('');
 
   // Only the lead may delegate, so there is only ever one of them.
   const hasLead = employees.some((e) => e.role === 'lead');
@@ -283,6 +293,7 @@ export function StaffPanel({
   const handleCwdChange = (value: string) => {
     setCwd(value);
     setHandoffFromKey('');
+    setHireTeamRoot('');
   };
 
   const hire = () => {
@@ -308,6 +319,7 @@ export function StaffPanel({
       ...(persona.trim() ? { persona: persona.trim() } : {}),
       ...(hireModel ? { model: hireModel } : {}),
       ...(handoffFromKey ? { handoffFromKey } : {}),
+      ...(hireTeamRoot ? { teamRoot: hireTeamRoot } : {}),
     });
     setName('');
     setCwd('');
@@ -319,6 +331,11 @@ export function StaffPanel({
     setMode('office');
     setSecret('');
     setHandoffFromKey('');
+    // Safe to clear only because scaffoldTeamRoot (the roster's folder) is what
+    // survives, and every path that refills cwd either re-attaches from it or
+    // deliberately drops it. Clearing scaffoldTeamRoot here instead would leave
+    // everyone hired after the first with no team access and no sign of it.
+    setHireTeamRoot('');
   };
 
   const startEditingLabel = (e: EmployeeInfo) => {
@@ -365,6 +382,7 @@ export function StaffPanel({
       .then((result) => {
         if (result.ok) {
           setScaffoldRoster(result.roster);
+          setScaffoldTeamRoot(result.projectDir);
         } else {
           setScaffoldError(result.error);
         }
@@ -385,6 +403,10 @@ export function StaffPanel({
     setHireModel(entry.model);
     setIsLead(entry.org === 'lead' && !hasLead);
     setHandoffFromKey('');
+    // The cwd in the form now came from the roster, so the folder that roster was
+    // built in is a claim we can stand behind. Re-attached on every pick, not
+    // just the first, since a hand-edited cwd in between drops it.
+    setHireTeamRoot(scaffoldTeamRoot);
     requestHandoffNotes(entry.cwd);
     setActiveTab('hire');
   };

@@ -30,10 +30,12 @@ import {
 } from './employee.js';
 import { readEmployees, type SavedEmployee, writeEmployees } from './employeePersistence.js';
 import {
+  addPermission,
   clearEmployeePermissions,
   employeeKey,
   loadToolPermissions,
   newPermissionKey,
+  pathMatches,
 } from './toolPermissions.js';
 import type { AgentState } from './types.js';
 
@@ -910,6 +912,11 @@ export async function hireEmployee(
    *  reissue every employee's identity on every restart and wipe the office's
    *  allowances each time it opened. */
   savedPermissionKey?: string,
+  /** The team folder this hire was scaffolded under, when the hire came from a
+   *  scaffolded roster. Present = grant read access to the whole team folder, so
+   *  someone whose cwd is one subfolder can still read a sibling's work without
+   *  a prompt per file. Omitted (hand hire, onboarding, rehire) = grant nothing. */
+  teamRoot?: string,
 ): Promise<number | undefined> {
   if (!name.trim() || !cwd.trim()) return undefined;
 
@@ -939,6 +946,25 @@ export async function hireEmployee(
   const provider = resolveProvider(ownProvider);
 
   const permissionKey = savedPermissionKey ?? newPermissionKey(trimmedName);
+
+  // A teammate's own cwd is one subfolder of the team; the work they have to
+  // read — someone else's source, the shared docs — is not. Without this they
+  // stall on a prompt per file and the shift dies with nothing to show for it.
+  //
+  // Read/Grep/Glob are three grants, not one: checkAutoApproval filters on the
+  // tool name first, so a Read rule never covers a Grep. Read-shaped tools only —
+  // this widens what can be looked at, never what can be changed or run.
+  //
+  // The client's teamRoot is a hint, not a fact: only a cwd that actually sits
+  // under it earns the grant. If that check is ever wrong, it is wrong toward
+  // granting nothing rather than opening a folder nobody works in.
+  const trimmedTeamRoot = teamRoot?.trim();
+  if (trimmedTeamRoot && pathMatches(cwd, trimmedTeamRoot, 'dirPrefix')) {
+    const addedAt = new Date().toISOString();
+    for (const tool of ['Read', 'Grep', 'Glob']) {
+      addPermission(permissionKey, { tool, match: 'dirPrefix', value: trimmedTeamRoot, addedAt });
+    }
+  }
 
   const employee = new ClaudeEmployee(
     trimmedName,

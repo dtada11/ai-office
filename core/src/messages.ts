@@ -574,6 +574,7 @@ export interface HireEmployee {
   provider?: EmployeeProvider;
   model?: string;
   handoffFromKey?: string;
+  teamRoot?: string;
 }
 
 export interface EmployeeProvider {
