@@ -30,6 +30,14 @@ export interface SavedEmployee {
   /** The AI this employee brings themselves. Absent = follow the office default,
    *  which is why it is only written for employees who actually override it. */
   provider?: EmployeeProvider;
+  /** Which allowlist bucket is theirs (see newPermissionKey). Minted at hire and
+   *  kept here so it survives a clock-out and a restart — an identity that is
+   *  recomputed on every start is one that resets on every start. Absent on a
+   *  roster written before permissions split off from names: such an entry is
+   *  issued a fresh key on load, and whatever its name-keyed bucket held is
+   *  orphaned and swept, which is the intended outcome — those allowances were
+   *  granted to a name, and a name is not a person. */
+  permissionKey?: string;
   /** True when this employee clocked out before the roster was last saved.
    *  rehireSavedEmployees() registers them off duty instead of starting a
    *  session — no character until the user clocks them back in. */

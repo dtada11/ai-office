@@ -7,28 +7,56 @@ import * as path from 'path';
  * Fail-closed: if the file is missing or corrupted, automode is simply disabled, not a crash
  */
 
-/** Stable identity for an employee, derived from their name. A sanitized name for
- *  legibility plus a short hash so two names that sanitize alike stay separate.
- *
- *  Must key off the *name*, never the session id: session ids are reissued on
- *  /clear and on clock-out/clock-in, which would silently drop the whole
- *  allowlist. Worse, `ClaudeEmployee.sessionId` starts as '' and is only filled
- *  once the session announces itself — so keying on it would put every employee
- *  that acts early under the same '' bucket, leaking one employee's allowances
- *  to another.
- *
- *  employees.ts re-exports this as handoffKey so an employee's allowlist and
- *  their handoff notes share one identity. Defined here (not there) because
- *  employees.ts already imports employee.ts, and employee.ts needs this too —
- *  the reverse edge would be a cycle. */
-export function employeeKey(name: string): string {
-  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
-  const safe = name
+/** A filesystem-safe, legible rendering of a name — the part of a key a human
+ *  reads to tell whose bucket is whose. Both identities below are used as path
+ *  or JSON-object segments, so a name carrying '/', '\' or spaces has to come
+ *  out the other side harmless. */
+function safeNameSegment(name: string): string {
+  return name
     .trim()
     .replace(/[^\p{L}\p{N}_-]+/gu, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 40);
+}
+
+/** Which employee's handoff notes these are, derived from their name. A
+ *  sanitized name for legibility plus a short hash so two names that sanitize
+ *  alike stay separate.
+ *
+ *  Name-derived on purpose, and only safe for notes: the next person to hold a
+ *  name is *meant* to find the last one's notes (see hireEmployee's
+ *  handoffFromKey — a differently-named hire can resume anyone's shift). That
+ *  same inheritance is exactly what an allowlist must not do, which is why
+ *  permissions no longer key off this. Knowledge is handed down; permission is
+ *  not.
+ *
+ *  employees.ts re-exports this as handoffKey. Defined here (not there) for
+ *  historical reasons — employees.ts already imports employee.ts, so the
+ *  reverse edge would have been a cycle. */
+export function employeeKey(name: string): string {
+  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+  const safe = safeNameSegment(name);
   return safe ? `${safe}-${hash}` : hash;
+}
+
+/** A brand-new allowlist identity, minted once when someone is hired and then
+ *  carried on the roster for as long as they work here.
+ *
+ *  The name in front is decoration — it is there so the user can tell whose
+ *  bucket is whose with the file open. The random half is the identity, and it
+ *  is what makes a key unguessable from a name: fire someone and hire another
+ *  by the same name, and the newcomer cannot so much as name the bucket their
+ *  predecessor filled. No comparison step blocks the inheritance; there is
+ *  simply nothing to inherit.
+ *
+ *  Must NOT be derived from the session id: session ids are reissued on /clear
+ *  and on clock-out/clock-in, and `ClaudeEmployee.sessionId` starts as '' —
+ *  keying on it dropped every allowlist on restart once already (9dd36bd), and
+ *  bucketed every employee who acted early under a shared '' key. */
+export function newPermissionKey(name: string): string {
+  const nonce = crypto.randomBytes(4).toString('hex');
+  const safe = safeNameSegment(name);
+  return safe ? `${safe}-${nonce}` : nonce;
 }
 
 export interface ToolPermission {
@@ -63,8 +91,11 @@ export function loadToolPermissions(): ToolPermissionsData {
     }
     const content = fs.readFileSync(PERMISSIONS_FILE, 'utf-8');
     const data = JSON.parse(content);
-    // Validate basic structure
-    if (data.version !== 1 || typeof data.byEmployee !== 'object') {
+    // Validate basic structure. The null check is not redundant: typeof null is
+    // 'object', so a file holding "byEmployee": null would pass a bare typeof
+    // test and then throw on the first property read — a crash, which is the one
+    // thing a fail-closed loader must never do.
+    if (data.version !== 1 || !data.byEmployee || typeof data.byEmployee !== 'object') {
       console.warn('[toolPermissions] Invalid structure, resetting');
       return { version: 1, byEmployee: {} };
     }

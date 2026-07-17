@@ -30,10 +30,16 @@ import {
   hireEmployee,
   listAllowlistTargets,
   listHandoffNotes,
+  pruneOrphanedPermissions,
   rehireSavedEmployees,
   renameEmployee,
 } from '../src/employees.js';
-import { addPermission, checkAutoApproval, type ToolPermission } from '../src/toolPermissions.js';
+import {
+  addPermission,
+  checkAutoApproval,
+  loadToolPermissions,
+  type ToolPermission,
+} from '../src/toolPermissions.js';
 import { restoreHome } from './testHome.js';
 
 // Before the imports, not in beforeEach: toolPermissions.ts resolves the
@@ -243,6 +249,43 @@ describe('재직 중인 직원의 권한은 살아남는다', () => {
     await restart(savedRoster());
 
     expect(autoApproved('사이트담당', 'npm run deploy')).toBe(true);
+  });
+});
+
+// 키를 이름에서 떼어내면, 떠난 직원의 허용목록은 아무도 열쇠를 갖지 않은 채
+// 파일에 남는다. 죽은 항목이라 위험하진 않지만, 쌓이는 건 사실이라 치운다.
+describe('고아 청소 — 아무도 쓸 수 없는 항목만 지운다', () => {
+  // 로스터가 비었다는 건 "직원이 없다"일 수도, "아직 복원 전"일 수도 있다. 둘을
+  // 구분할 방법이 없으므로 안전한 쪽으로 실패한다 — 여기서 지워버리면 사무실을
+  // 열 때마다 전 직원의 자동 허용이 조용히 증발한다.
+  it('B-7: 로스터가 비어 있으면 아무것도 지우지 않는다', async () => {
+    addPermission('아무개-00000000', permission('Bash', 'exact', 'npm run deploy'));
+    await restart([]);
+
+    pruneOrphanedPermissions();
+
+    expect(loadToolPermissions().byEmployee['아무개-00000000']).toEqual({
+      allow: [permission('Bash', 'exact', 'npm run deploy')],
+    });
+  });
+
+  // 퇴근은 퇴사가 아니다. offDuty 직원도 로스터에 있는 재직자이므로 그 키는
+  // 살아있는 명단에 들어야 한다 — 아니면 하룻밤 자고 온 직원이 허용을 잃는다.
+  it('B-8: 재직 중인 키는 남기고, 로스터에 없는 키만 지운다', async () => {
+    const store = new AgentStateStore();
+    const agentId = await hireEmployee(store, '사이트담당', WORK, 'staff', SONNET);
+    addPermission(allowlistKeyFor(agentId!)!, permission('Bash', 'exact', 'npm run deploy'));
+    clockOutFully(store, agentId!, '사이트담당', '오늘 한 일');
+    const roster = savedRoster();
+    expect(roster[0].offDuty).toBe(true); // 이 테스트가 겨누는 경로가 맞는지부터
+
+    addPermission('떠난사람-deadbeef', permission('Bash', 'exact', 'rm -rf /'));
+
+    await restart(roster);
+    pruneOrphanedPermissions();
+
+    expect(autoApproved('사이트담당', 'npm run deploy')).toBe(true);
+    expect(loadToolPermissions().byEmployee['떠난사람-deadbeef']).toBeUndefined();
   });
 });
 

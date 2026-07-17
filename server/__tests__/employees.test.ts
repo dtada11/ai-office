@@ -458,7 +458,17 @@ describe('employees', () => {
     it('saves the model an employee is started on', async () => {
       await hireEmployee(store, '코더', '/work', 'staff', SONNET);
 
-      expect(savedRoster()).toEqual([{ name: '코더', cwd: '/work', role: 'staff', model: SONNET }]);
+      // 전체 모양을 그대로 못 박는다 — permissionKey는 고용 때 난수로 발급되므로
+      // 값이 아니라 "실려 있다"는 사실만 확인한다(그 값이 무엇인지는 B-3이 지킨다).
+      expect(savedRoster()).toEqual([
+        {
+          name: '코더',
+          permissionKey: expect.any(String),
+          cwd: '/work',
+          role: 'staff',
+          model: SONNET,
+        },
+      ]);
     });
 
     it('saves the new model once the reply confirms the switch', async () => {

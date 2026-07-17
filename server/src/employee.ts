@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { EmployeeProvider } from '../../core/src/messages.js';
 import { buildEnv } from './aiProvider.js';
 import { getContextLimit } from './claudeSettings.js';
-import { checkAutoApproval, employeeKey, hasDangerousBashMetachars } from './toolPermissions.js';
+import { checkAutoApproval, hasDangerousBashMetachars } from './toolPermissions.js';
 
 type Sdk = typeof import('@anthropic-ai/claude-agent-sdk', {
   with: { 'resolution-mode': 'import' },
@@ -170,6 +170,11 @@ export class ClaudeEmployee implements Employee {
     /** The AI this employee is plugged into — already resolved against the
      *  office default, so this is exactly what the session will authenticate with. */
     private readonly provider: EmployeeProvider,
+    /** Whose allowlist canUseTool consults — minted by the office at hire time
+     *  and handed in, never computed here. Deriving it from `this.name` is what
+     *  let a fired employee's allowances land on the next hire of the same name;
+     *  an employee carries their identity rather than recomputing it. */
+    private readonly permissionKey: string,
   ) {}
 
   async start(
@@ -216,10 +221,11 @@ export class ClaudeEmployee implements Employee {
           }
 
           // Stage 1 automode: the user's own allowlist, grown by clicking
-          // "don't ask again". Keyed by name — never by sessionId, which is ''
-          // until the session announces itself and is reissued on /clear and on
-          // clock-out, either of which would silently drop the whole allowlist.
-          const permission = checkAutoApproval(employeeKey(this.name), toolName, toolInput);
+          // "don't ask again". This is the single point where an allowlist is
+          // actually enforced, so the key it reads has to be the same one the
+          // settings panel writes — hence the office hands it in (see
+          // allowlistKeyFor), rather than either side deriving its own.
+          const permission = checkAutoApproval(this.permissionKey, toolName, toolInput);
           if (permission) {
             // Re-verify Bash metacharacters at matching time (file is untrusted input).
             // Fail-closed: if suspicious, fall through to human approval.

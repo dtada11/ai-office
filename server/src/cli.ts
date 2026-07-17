@@ -23,7 +23,7 @@ import {
 } from './assetLoader.js';
 import { getConfiguredModel } from './claudeSettings.js';
 import type { AssetCache } from './clientMessageHandler.js';
-import { disposeEmployees, rehireSavedEmployees } from './employees.js';
+import { disposeEmployees, pruneOrphanedPermissions, rehireSavedEmployees } from './employees.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { PlanUsageTracker } from './planUsage.js';
 import { claudeProvider, copyHookScript } from './providers/index.js';
@@ -169,9 +169,19 @@ async function main(): Promise<void> {
     // Fire-and-forget, but never unhandled: rehireSavedEmployees already guards
     // each roster entry, and this .catch is the last line of defense so a
     // rejection here can never take the whole server process down.
-    void rehireSavedEmployees(store, getConfiguredModel(), runtime).catch((err) => {
-      console.error('[Pixel Agents] rehireSavedEmployees failed:', err);
-    });
+    void rehireSavedEmployees(store, getConfiguredModel(), runtime)
+      .then(() => {
+        // Strictly after the roster is back: this deletes buckets no live key
+        // claims, and before the rehire there are no live keys at all — every
+        // employee's allowances would read as orphaned. pruneOrphanedPermissions
+        // bails on an empty roster for exactly that reason, so this ordering is
+        // belt and braces rather than the only thing standing between the user
+        // and an office that forgets its permissions each time it opens.
+        pruneOrphanedPermissions();
+      })
+      .catch((err) => {
+        console.error('[Pixel Agents] rehireSavedEmployees failed:', err);
+      });
 
     // ── Plan usage gauges: scan transcripts + broadcast every minute ──
     // A plan limit is a subscription's idea. An office running on an API key is

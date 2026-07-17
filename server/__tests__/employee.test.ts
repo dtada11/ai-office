@@ -23,6 +23,7 @@ function makeEmployee(): { employee: ClaudeEmployee; events: EmployeeEvent[] } {
     '/work',
     { onEvent: (event) => events.push(event), askPermission: async () => true },
     { mode: 'subscription' } as never,
+    '코더-0f1e2d3c',
   );
   return { employee, events };
 }

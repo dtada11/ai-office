@@ -16,8 +16,8 @@ import type { ClientMessageContext } from '../src/clientMessageHandler.js';
 import { handleClientMessage } from '../src/clientMessageHandler.js';
 import type { SavedEmployee } from '../src/employeePersistence.js';
 import { readEmployees } from '../src/employeePersistence.js';
-import { disposeEmployees, rehireSavedEmployees } from '../src/employees.js';
-import { addPermission, employeeKey, loadToolPermissions } from '../src/toolPermissions.js';
+import { disposeEmployees, listAllowlistTargets, rehireSavedEmployees } from '../src/employees.js';
+import { addPermission, loadToolPermissions } from '../src/toolPermissions.js';
 import { restoreHome } from './testHome.js';
 
 // Before the imports, not in beforeEach: toolPermissions.ts resolves the
@@ -79,6 +79,15 @@ function permission(tool: string, match: 'exact' | 'dirPrefix', value: string) {
   return { tool, match, value, addedAt: '2026-07-17T14:32:00.000Z' };
 }
 
+/** The key this employee's allowlist is filed under, asked of the roster rather
+ *  than computed from their name. A permission key is minted at hire and known
+ *  only to the roster — deriving one here would seed a bucket the panel cannot
+ *  see, and the test would be asserting against its own arithmetic instead of
+ *  against the server. Must be called after the employee is on the roster. */
+function keyOf(name: string): string {
+  return listAllowlistTargets().find((t) => t.name === name)!.key;
+}
+
 beforeEach(() => {
   vi.mocked(readEmployees).mockReturnValue([]);
 });
@@ -105,7 +114,7 @@ describe('listAllowlist', () => {
     ]);
     await rehireSavedEmployees(ctx.store, SONNET);
 
-    addPermission(employeeKey('사이트담당'), permission('Read', 'dirPrefix', 'F:\\Projects'));
+    addPermission(keyOf('사이트담당'), permission('Read', 'dirPrefix', 'F:\\Projects'));
 
     expect(listed(ctx).map((e) => e.name)).toEqual(['사이트담당', '기획담당']);
   });
@@ -127,7 +136,7 @@ describe('listAllowlist', () => {
     ]);
     await rehireSavedEmployees(ctx.store, SONNET);
 
-    addPermission(employeeKey('사이트담당'), permission('Bash', 'exact', 'npm run test'));
+    addPermission(keyOf('사이트담당'), permission('Bash', 'exact', 'npm run test'));
 
     expect(listed(ctx)[0].allow).toEqual([
       { tool: 'Bash', match: 'exact', value: 'npm run test', addedAt: '2026-07-17T14:32:00.000Z' },
@@ -141,7 +150,9 @@ describe('listAllowlist', () => {
     ]);
     await rehireSavedEmployees(ctx.store, SONNET);
 
-    addPermission(employeeKey('퇴사자'), permission('Read', 'dirPrefix', 'F:\\Old'));
+    // 로스터의 누구도 갖지 않은 키 — 퇴사자가 남기고 간 고아 항목이 이 모양이다.
+    // 이름에서 키를 만들지 않는 이상 이런 항목에 붙일 이름은 어디에도 없다.
+    addPermission('퇴사자-deadbeef', permission('Read', 'dirPrefix', 'F:\\Old'));
 
     expect(listed(ctx).map((e) => e.name)).toEqual(['사이트담당']);
   });
@@ -154,7 +165,7 @@ describe('removeFromAllowlist', () => {
       { name: '사이트담당', cwd: '/work', role: 'staff', offDuty: true },
     ]);
     await rehireSavedEmployees(ctx.store, SONNET);
-    addPermission(employeeKey('사이트담당'), permission('Bash', 'exact', 'npm run test'));
+    addPermission(keyOf('사이트담당'), permission('Bash', 'exact', 'npm run test'));
     return listed(ctx)[0].agentId;
   }
 
@@ -174,7 +185,7 @@ describe('removeFromAllowlist', () => {
       ctx,
     );
 
-    expect(loadToolPermissions().byEmployee[employeeKey('사이트담당')].allow).toEqual([]);
+    expect(loadToolPermissions().byEmployee[keyOf('사이트담당')].allow).toEqual([]);
   });
 
   it('삭제 후 갱신된 목록을 즉시 돌려준다 — 웹뷰가 다시 물어보지 않는다', async () => {
@@ -229,7 +240,7 @@ describe('removeFromAllowlist', () => {
     handleClientMessage(
       {
         type: 'removeFromAllowlist',
-        employeeKey: employeeKey('사이트담당'),
+        employeeKey: keyOf('사이트담당'),
         toolName: 'Bash',
         match: 'exact',
         value: 'npm run test',
@@ -238,7 +249,7 @@ describe('removeFromAllowlist', () => {
       ctx,
     );
 
-    expect(loadToolPermissions().byEmployee[employeeKey('사이트담당')].allow).toHaveLength(1);
+    expect(loadToolPermissions().byEmployee[keyOf('사이트담당')].allow).toHaveLength(1);
   });
 
   it('값이 다르면 지우지 않는다 — 도구·match·value 셋이 한 항목을 지목한다', async () => {
@@ -257,6 +268,6 @@ describe('removeFromAllowlist', () => {
       ctx,
     );
 
-    expect(loadToolPermissions().byEmployee[employeeKey('사이트담당')].allow).toHaveLength(1);
+    expect(loadToolPermissions().byEmployee[keyOf('사이트담당')].allow).toHaveLength(1);
   });
 });

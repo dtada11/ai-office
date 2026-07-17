@@ -29,7 +29,12 @@ import {
   type PermissionAsk,
 } from './employee.js';
 import { readEmployees, type SavedEmployee, writeEmployees } from './employeePersistence.js';
-import { employeeKey } from './toolPermissions.js';
+import {
+  clearEmployeePermissions,
+  employeeKey,
+  loadToolPermissions,
+  newPermissionKey,
+} from './toolPermissions.js';
 import type { AgentState } from './types.js';
 
 /** How long a permission request waits for the user before being denied. */
@@ -76,6 +81,12 @@ interface Staff {
   /** Absent only when `duty` is 'off' — a clocked-out employee has no live session. */
   employee?: Employee;
   name: string;
+  /** Whose allowlist is theirs (see newPermissionKey). Issued once, at hire, and
+   *  carried from here into the roster, the session, and the settings panel, so
+   *  all three agree on one identity. Not derived from `name`: two people can
+   *  share a name across time, and the second must not inherit the first's
+   *  allowances. */
+  permissionKey: string;
   cwd: string;
   role: EmployeeRole;
   /** What they are called on screen. The office names its own jobs; `role` is still
@@ -525,12 +536,13 @@ export function getHandoffDir(cwd: string, name: string): string {
  *  distinct names that sanitize to the same string still get separate folders
  *  (the whole point here is that notes never cross).
  *
- *  Lives in toolPermissions.ts so employee.ts can key its allowlist off the same
- *  identity without importing this module (employees.ts already imports
- *  employee.ts, so the reverse edge would be a cycle). Two copies would drift —
- *  and a drifting identity means an employee's allowlist silently detaches from
- *  their handoff notes. Re-exported here because this module is where callers
- *  expect it. */
+ *  Name-derived, and deliberately NOT what an allowlist is keyed by — that is
+ *  `Staff.permissionKey`, minted per hire. The two were once the same function,
+ *  which is exactly how a fired employee's allowances landed on the next hire of
+ *  the same name: notes are *meant* to be inherited by whoever holds the name
+ *  next, and permissions rode along on that inheritance. Re-uniting them
+ *  reintroduces the bug. Knowledge is handed down; permission is granted to a
+ *  person. */
 const handoffKey = employeeKey;
 
 /** Resolve a handoff-note folder from a client-supplied key, but only if it is a
@@ -838,6 +850,9 @@ export async function clockIn(
       askPermission: (ask) => askPermission(store, agentId, ask),
     },
     current.provider,
+    // Their own key, not a new one — clocking out is going home for the day, not
+    // resigning. A fresh session for the same person keeps the same identity.
+    current.permissionKey,
   );
 
   current.employee = employee;
@@ -889,6 +904,12 @@ export async function hireEmployee(
    *  hire can pick up where someone else left off. Omitted = a plain
    *  first-shift start with no note. */
   handoffFromKey?: string,
+  /** This employee's existing allowlist identity, replayed from the roster when
+   *  the office reopens. Omitted = a genuinely new hire, who gets a fresh key.
+   *  The distinction is the whole point: minting one here unconditionally would
+   *  reissue every employee's identity on every restart and wipe the office's
+   *  allowances each time it opened. */
+  savedPermissionKey?: string,
 ): Promise<number | undefined> {
   if (!name.trim() || !cwd.trim()) return undefined;
 
@@ -917,6 +938,8 @@ export async function hireEmployee(
   // so changing the office default later cannot swap out a running employee's AI.
   const provider = resolveProvider(ownProvider);
 
+  const permissionKey = savedPermissionKey ?? newPermissionKey(trimmedName);
+
   const employee = new ClaudeEmployee(
     trimmedName,
     cwd,
@@ -925,6 +948,7 @@ export async function hireEmployee(
       askPermission: (ask) => askPermission(store, agentId, ask),
     },
     provider,
+    permissionKey,
   );
 
   // Store the trimmed name — not the raw one. handoffKey() and delegate() both
@@ -935,6 +959,7 @@ export async function hireEmployee(
   staff.set(agentId, {
     employee,
     name: trimmedName,
+    permissionKey,
     cwd,
     role,
     roleLabel,
@@ -1055,7 +1080,7 @@ export function isEmployee(agentId: number): boolean {
  *  agentId so a bad id writes nothing instead of creating a stray bucket. */
 export function allowlistKeyFor(agentId: number): string | null {
   const current = staff.get(agentId);
-  return current ? handoffKey(current.name) : null;
+  return current ? current.permissionKey : null;
 }
 
 /** Everyone on the roster, with the name to show and the key their allowlist is
@@ -1070,8 +1095,38 @@ export function listAllowlistTargets(): Array<{ agentId: number; name: string; k
   return [...staff.entries()].map(([agentId, s]) => ({
     agentId,
     name: s.name,
-    key: handoffKey(s.name),
+    key: s.permissionKey,
   }));
+}
+
+/** Drop every allowlist bucket that no one on the roster holds the key to.
+ *
+ *  Now that a permission key is minted rather than derived from a name, a
+ *  departure strands its bucket: the key leaves with the roster entry, and
+ *  nothing can ever present it again. This is that cleanup.
+ *
+ *  State-based on purpose — "delete whatever no live key claims", not "delete on
+ *  the way out". A departure hook leaks: a session that dies while on duty is
+ *  dropped by onEvent's 'ended' handler without ever passing through
+ *  fireEmployee, so its bucket would survive a hook hung there.
+ *
+ *  An orphan is inert — no one can name it, so no one can use it. That makes
+ *  this sweep safe to run late, to fail, or never to run at all; the worst case
+ *  is a file that keeps some dead weight. Nothing resurrects in the meantime,
+ *  which is the property that lets this be a housekeeping chore rather than a
+ *  security control.
+ *
+ *  Only meaningful once the roster is loaded, so it bails on an empty one: with
+ *  no live keys every bucket looks orphaned, and "nobody works here" is
+ *  indistinguishable from "nobody has been restored yet". Erring toward keeping
+ *  a dead bucket costs nothing; erring the other way silently empties the
+ *  allowlist of every employee in the office. */
+export function pruneOrphanedPermissions(): void {
+  const liveKeys = new Set([...staff.values()].map((s) => s.permissionKey));
+  if (liveKeys.size === 0) return;
+  for (const key of Object.keys(loadToolPermissions().byEmployee)) {
+    if (!liveKeys.has(key)) clearEmployeePermissions(key);
+  }
 }
 
 /** Every request still waiting on the user — what a client that just connected has
@@ -1143,6 +1198,10 @@ function saveStaff(): void {
   writeEmployees(
     [...staff.values()].map((s) => ({
       name: s.name,
+      // Unconditional, unlike the optional fields below: this is an identity, and
+      // a roster that forgets it is a roster whose employees lose every standing
+      // allowance on the next restart.
+      permissionKey: s.permissionKey,
       cwd: s.cwd,
       role: s.role,
       ...(s.roleLabel ? { roleLabel: s.roleLabel } : {}),
@@ -1163,6 +1222,10 @@ function registerOffDutyStaff(store: AgentStateStore, saved: SavedEmployee): voi
   const provider = resolveProvider(saved.provider);
   staff.set(agentId, {
     name: saved.name,
+    // The second door into the roster: a clocked-out employee is restored here
+    // and never passes through hireEmployee, so an identity issued only there
+    // would strand every off-duty employee without one.
+    permissionKey: saved.permissionKey ?? newPermissionKey(saved.name),
     cwd: saved.cwd,
     role: saved.role ?? 'staff',
     roleLabel: saved.roleLabel,
@@ -1226,6 +1289,9 @@ export async function rehireSavedEmployees(
         saved.persona,
         saved.palette,
         saved.hueShift,
+        undefined, // handoffFromKey — a restart resumes their own notes by name, not by pick
+        // Replayed, never reminted: this is the same person coming back to work.
+        saved.permissionKey,
       );
     } catch (err) {
       console.error(`[Pixel Agents] Failed to rehire "${saved.name}" — skipping:`, err);

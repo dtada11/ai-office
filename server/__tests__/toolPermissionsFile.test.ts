@@ -93,6 +93,18 @@ describe('loadToolPermissions', () => {
 
     expect(loadToolPermissions()).toEqual(EMPTY);
   });
+
+  // null은 문자열과 달리 typeof가 'object'라 구조 검증을 그냥 통과했다. 위 테스트가
+  // 문자열로만 확인한 탓에 이 구멍이 남아 있었다 — 통과한 null은 첫 속성 읽기,
+  // 즉 checkAutoApproval에서 TypeError로 터졌다. fail-closed가 약속한 것은
+  // "자동승인 없음"이지 크래시가 아니다.
+  it('byEmployee가 null이어도 빈 구조 — typeof null이 object라 그냥 통과하면 안 된다', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    writeRaw(JSON.stringify({ version: 1, byEmployee: null }));
+
+    expect(loadToolPermissions()).toEqual(EMPTY);
+    expect(() => checkAutoApproval('어떤키', 'Bash', { command: 'npm run test' })).not.toThrow();
+  });
 });
 
 describe('saveToolPermissions', () => {
