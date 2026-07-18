@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { ChatEntry, EmployeeInfo, PermissionRequest } from '../hooks/useExtensionMessages.js';
+import { useWindowDrag } from '../hooks/useWindowDrag.js';
 import { displayModel, MODEL_OPTIONS } from '../models.js';
 import { transport } from '../transport/index.js';
 import { hasDangerousBashMetachars } from '../utils/bashSafety.js';
 import { allowlistEntryFor } from './allowlistEntry.js';
 import type { ChatPosition, ChatSize } from './chatWindowPosition.js';
-import { clampChatPosition, clampChatSize } from './chatWindowPosition.js';
+import { ResizeHandle } from './ResizeHandle.js';
 import type { ToolCategory } from './toolSummary.js';
 import {
   categorizeTool,
@@ -233,21 +234,13 @@ export function EmployeeChat({
   /** The model just picked, shown at once so the click has an answer. The session
    *  only reports what it actually ran on at the next reply — and that wins. */
   const [picked, setPicked] = useState('');
-  /** Grab offset while dragging: pointer minus window origin. Null = not dragging. */
-  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
-  /** Grab offset while resizing: pointer minus the size at drag start. Null = not resizing. */
-  const [resizeDrag, setResizeDrag] = useState<{
-    startX: number;
-    startY: number;
-    startW: number;
-    startH: number;
-  } | null>(null);
+  /** Move/resize gesture, shared with the board window (see useWindowDrag). */
+  const { panelRef, startDrag, startResize } = useWindowDrag(position, onMove, onResize);
   /** Whether the user is close enough to the bottom to keep auto-scrolling.
    *  Starts true so a freshly opened window still lands on the latest message. */
   const [stickToBottom, setStickToBottom] = useState(true);
   const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   // Only the oldest request is shown; the rest wait behind it (I-2).
   const permission = permissions[0];
@@ -304,72 +297,6 @@ export function EmployeeChat({
   useEffect(() => {
     setPicked('');
   }, [employee]);
-
-  // Listeners on the window, not on the header: bringing the window to the front
-  // re-orders it in the DOM, which would drop a pointer capture held by the header.
-  useEffect(() => {
-    if (!drag) return;
-    const move = (e: PointerEvent) => {
-      onMove(
-        clampChatPosition(
-          { x: e.clientX - drag.dx, y: e.clientY - drag.dy },
-          { width: window.innerWidth, height: window.innerHeight },
-        ),
-      );
-    };
-    const end = () => setDrag(null);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-    };
-  }, [drag, onMove]);
-
-  // Same pattern as the drag listener above, for the resize handle.
-  useEffect(() => {
-    if (!resizeDrag) return;
-    const move = (e: PointerEvent) => {
-      onResize(
-        clampChatSize(
-          {
-            width: resizeDrag.startW + (e.clientX - resizeDrag.startX),
-            height: resizeDrag.startH + (e.clientY - resizeDrag.startY),
-          },
-          { width: window.innerWidth, height: window.innerHeight },
-        ),
-      );
-    };
-    const end = () => setResizeDrag(null);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-    };
-  }, [resizeDrag, onResize]);
-
-  const startDrag = (e: React.PointerEvent) => {
-    // Buttons in the header (✕, the model dropdown) are controls, not a handle.
-    if ((e.target as HTMLElement).closest('button')) return;
-    setDrag({ dx: e.clientX - position.x, dy: e.clientY - position.y });
-  };
-
-  const startResize = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    const rect = panelRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setResizeDrag({
-      startX: e.clientX,
-      startY: e.clientY,
-      startW: rect.width,
-      startH: rect.height,
-    });
-  };
 
   const send = () => {
     const text = input.trim();
@@ -650,14 +577,7 @@ export function EmployeeChat({
         </Button>
       </div>
 
-      <div
-        className="absolute right-0 bottom-0 w-14 h-14 cursor-nwse-resize"
-        onPointerDown={startResize}
-        title="창 크기 조절"
-        data-testid="chat-resize-handle"
-      >
-        <div className="absolute right-2 bottom-2 w-6 h-6 border-r-2 border-b-2 border-text-muted" />
-      </div>
+      <ResizeHandle onPointerDown={startResize} testId="chat-resize-handle" />
     </div>
   );
 }

@@ -200,8 +200,47 @@ export const CHAT_HEADER_VISIBLE_PX = 32;
  *  a couple of log lines, and the input row. */
 export const CHAT_MIN_WIDTH_PX = 340;
 export const CHAT_MIN_HEIGHT_PX = 320;
-/** Largest a resized chat window can grow to, as a fraction of the viewport.
- *  A chat that covers the office defeats the point of a pixel office: you're
- *  supposed to be able to see who's doing what while you read. */
-export const CHAT_MAX_WIDTH_RATIO = 0.7;
+/** Largest a resized window can grow to, as a fraction of the viewport. Some
+ *  sliver of office stays visible either way — the point of a pixel office is
+ *  seeing who is doing what while you read.
+ *
+ *  Width is the looser of the two because the board window opens three chat
+ *  widths across, and a ceiling below its own default would snap it smaller the
+ *  instant anyone touched a resize handle. */
+export const CHAT_MAX_WIDTH_RATIO = 0.9;
 export const CHAT_MAX_HEIGHT_RATIO = 0.7;
+
+// ── 팀 흐름 캔버스 (대시보드 탭) ─────────────────────────────────
+/** Canvas colours for the delegate → collect diagram. Here rather than in the
+ *  component because canvas paints are strings, not classes, and this project
+ *  keeps every colour literal in one file. Values mirror the CSS tokens in
+ *  index.css (--color-accent, --color-status-success, …) so the canvas and the
+ *  DOM around it stay the same office. */
+export const FLOW_WIRE_COLOR = 'rgba(116, 111, 255, 0.18)';
+/** RGB triples, not colours: the packet trail builds gradients from them. */
+export const FLOW_OUT_RGB = '116, 111, 255';
+export const FLOW_BACK_RGB = '137, 209, 133';
+export const FLOW_LEAD_FILL = '#6030ff';
+export const FLOW_LEAD_BORDER = '#746fff';
+export const FLOW_NODE_FILL = '#2a2a3a';
+export const FLOW_NODE_BORDER = '#4a4a6a';
+export const FLOW_ACTIVE_FILL = '#20402c';
+export const FLOW_ACTIVE_BORDER = '#89d185';
+export const FLOW_PERM_FILL = '#3a2f1a';
+export const FLOW_PERM_BORDER = '#cca700';
+export const FLOW_LABEL_COLOR = 'rgba(255, 255, 255, 0.9)';
+/** Canvas text. The pixel face carries no Hangul (see index.css), so Korean
+ *  labels fall through to the system sans either way — naming it here keeps the
+ *  Latin/digit glyphs consistent with the rest of the UI. */
+export const FLOW_LEAD_FONT = '700 13px "FS Pixel Sans", sans-serif';
+export const FLOW_STAFF_FONT = '12px "FS Pixel Sans", sans-serif';
+/** Colour builders for the flow canvas. Composing `rgba(…)` at the call site
+ *  would be an inline colour literal (the lint rule reads template strings
+ *  too), and the packet trail genuinely needs a per-frame alpha — so the
+ *  composition lives here, in the one file colours are allowed in. */
+export function flowRgba(rgb: string, alpha: number): string {
+  return `rgba(${rgb}, ${alpha})`;
+}
+export function flowRgb(rgb: string): string {
+  return `rgb(${rgb})`;
+}
