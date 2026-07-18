@@ -15,6 +15,7 @@ import {
   isEmployee,
   listAllowlistTargets,
   listHandoffNotes,
+  readBoard,
   renameEmployee,
   resolveEmployeePermission,
   sendStaffTo,
@@ -304,6 +305,14 @@ export function handleClientMessage(
         cwd: msg.cwd as string,
         notes: listHandoffNotes(msg.cwd as string),
       });
+      break;
+
+    // teamRoot picks WHICH team's board, among the roots the server already
+    // knows; readBoard refuses anything that is not one of them, so this stays
+    // a choice and never becomes an arbitrary file read. Answers this client
+    // only; the board is not broadcast state.
+    case 'requestBoard':
+      send({ type: 'boardContent', ...readBoard(msg.teamRoot as string | undefined) });
       break;
 
     case 'sendAgentMessage':

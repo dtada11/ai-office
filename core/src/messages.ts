@@ -33,6 +33,8 @@ export type ServerMessage =
   | AgentPermissionRequest
   | AgentPermissionResolved
   | HandoffNotesListed
+  | BoardContent
+  | BoardUpdate
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -72,6 +74,7 @@ export type ClientMessage =
   | HireEmployee
   | FireEmployee
   | ListHandoffNotes
+  | RequestBoard
   | SendAgentMessage
   | SetAgentModel
   | RenameEmployee
@@ -306,6 +309,22 @@ export interface HandoffNoteSummary {
   key: string;
   employee: string;
   savedAt: string;
+}
+
+export interface BoardContent {
+  type: 'boardContent';
+  available: boolean;
+  content: string;
+  path?: string;
+  teamRoot?: string;
+}
+
+export interface BoardUpdate {
+  type: 'boardUpdate';
+  kind: string;
+  text: string;
+  entry: string;
+  at: number;
 }
 
 export interface LayoutLoaded {
@@ -591,6 +610,11 @@ export interface FireEmployee {
 export interface ListHandoffNotes {
   type: 'listHandoffNotes';
   cwd: string;
+}
+
+export interface RequestBoard {
+  type: 'requestBoard';
+  teamRoot?: string;
 }
 
 export interface SendAgentMessage {

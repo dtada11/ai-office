@@ -410,8 +410,44 @@ function startRunningDelegation(
   sendToEmployee(store, agentId, instruction);
 }
 
-/** The lead's view of the staff, and the way work reaches them. */
-function delegationFor(store: AgentStateStore): Delegation {
+/** The shared meeting board (blackboard) at the team root. delegate/collect
+ *  append to it so the team's coordination is one file the user can open, and
+ *  each change is broadcast so live views (dashboard) can show it. A board write
+ *  must never break delegation, so all of this is best-effort. */
+function appendBoard(
+  teamRoot: string,
+  store: AgentStateStore,
+  kind: '배분' | '수거' | '메모',
+  text: string,
+): void {
+  try {
+    const boardPath = path.join(teamRoot, 'BOARD.md');
+    if (!fs.existsSync(boardPath)) {
+      fs.writeFileSync(
+        boardPath,
+        '# BOARD — 팀 회의록 (블랙보드)\n\n' +
+          '> 팀장이 배분하고 팀원 결과가 수거될 때마다 이 파일에 자동 기록된다. 팀의 공유 진실이며, 유저가 그대로 열어볼 수 있다.\n\n',
+        'utf-8',
+      );
+    }
+    const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+    const entry = `- \`${time}\` **[${kind}]** ${text}\n`;
+    fs.appendFileSync(boardPath, entry, 'utf-8');
+    store.broadcast({ type: 'boardUpdate', kind, text, entry: entry.trim(), at: Date.now() });
+  } catch {
+    // Best-effort: never let a board write break the actual delegation.
+  }
+}
+
+const oneLine = (s: string, n = 220): string => {
+  const t = s.replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n) + '…' : t;
+};
+
+/** The lead's view of the staff, and the way work reaches them. `teamRoot` (the
+ *  lead's own cwd) is where the shared BOARD.md lives; absent for a lead hired
+ *  without a team folder, in which case no board is kept. */
+function delegationFor(store: AgentStateStore, teamRoot?: string): Delegation {
   return {
     listStaff: () => {
       const team = [...staff.values()].filter((s) => s.role === 'staff');
@@ -444,16 +480,33 @@ function delegationFor(store: AgentStateStore): Delegation {
       // an uncollected result would make it vanish without the lead knowing.
       const overwritingDone = member.delegation?.state === 'done';
 
+      // Pull-before-act: when a shared board exists, tell the member to read it
+      // before working. Their result gets written back to the board on collect.
+      const boardHint = teamRoot
+        ? '[공유 회의보드] 팀 루트에 BOARD.md(회의록)가 있다. 작업을 시작하기 전에 먼저 읽고, 팀의 확정 사항을 반영해라. 네 결과는 collect 때 이 보드에 기록된다.\n\n'
+        : '';
+      const fullInstruction = boardHint + instruction;
+      const who = `${member.name}${member.roleLabel ? ` / ${member.roleLabel}` : ''}`;
+
       if (member.duty !== 'on') {
         let resolve!: (answer: string) => void;
         const done = new Promise<string>((res) => {
           resolve = res;
         });
-        member.delegation = { instruction, answer: '', state: 'pending', done, resolve };
+        member.delegation = {
+          instruction: fullInstruction,
+          answer: '',
+          state: 'pending',
+          done,
+          resolve,
+        };
+        if (teamRoot)
+          appendBoard(teamRoot, store, '배분', `팀장 → ${who} (보류): ${oneLine(instruction)}`);
         return `${member.name}은(는) 퇴근 상태입니다. 지시를 보류했습니다 — 출근시키면 바로 시작합니다. 결과는 collect로 받으세요.`;
       }
 
-      startRunningDelegation(store, agentId, member, instruction, '팀장 지시');
+      startRunningDelegation(store, agentId, member, fullInstruction, '팀장 지시');
+      if (teamRoot) appendBoard(teamRoot, store, '배분', `팀장 → ${who}: ${oneLine(instruction)}`);
 
       return overwritingDone
         ? `${member.name}에게 맡겼습니다. (직전 결과가 수거되지 않아 버려집니다.) 결과는 collect로 받으세요.`
@@ -481,6 +534,8 @@ function delegationFor(store: AgentStateStore): Delegation {
           // a 'done' one's promise is already settled, so this returns at once.
           const answer = await delegation.done;
           if (member.delegation === delegation) member.delegation = undefined;
+          if (teamRoot)
+            appendBoard(teamRoot, store, '수거', `${label} → 팀장: ${oneLine(answer, 300)}`);
           return `### ${label}\n${answer}`;
         }),
       );
@@ -862,7 +917,7 @@ export async function clockIn(
 
   await employee.start(
     current.model || undefined,
-    current.role === 'lead' ? delegationFor(store) : undefined,
+    current.role === 'lead' ? delegationFor(store, current.cwd) : undefined,
     current.persona,
     note ?? undefined,
   );
@@ -1013,7 +1068,7 @@ export async function hireEmployee(
     : undefined;
   await employee.start(
     model,
-    role === 'lead' ? delegationFor(store) : undefined,
+    role === 'lead' ? delegationFor(store, cwd) : undefined,
     persona,
     handoffNote,
   );
@@ -1351,6 +1406,81 @@ export function setEmployeeSeat(agentId: number, palette?: number, hueShift?: nu
   current.hueShift = hueShift;
   saveStaff();
   return true;
+}
+
+/** Every directory a board may be read from: the cwd of each lead currently on
+ *  the roster — the same root delegationFor hands appendBoard. This list IS the
+ *  allowlist, and it is derived from server state only; nothing off the wire
+ *  ever gets into it. */
+export function listTeamRoots(): string[] {
+  const roots: string[] = [];
+  for (const s of staff.values()) {
+    if (s.role === 'lead' && s.cwd && !roots.some((r) => sameDirectory(r, s.cwd!))) {
+      roots.push(s.cwd);
+    }
+  }
+  return roots;
+}
+
+/** Do two strings name the same directory? Resolved first, because the same
+ *  directory can be written with mixed separators or redundant `.`/`..`
+ *  segments, and compared case-insensitively on Windows, where paths are. */
+function sameDirectory(a: string, b: string): boolean {
+  const normalize = (p: string): string => {
+    const resolved = path.resolve(p);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(a) === normalize(b);
+}
+
+/** Read the shared meeting board (BOARD.md) that appendBoard writes.
+ *
+ *  This answers a message off /ws, which can be reached from 0.0.0.0, so
+ *  `teamRoot` is treated as a *choice among known roots*, never as a path to
+ *  open. Two rules make that hold, and both must stay:
+ *
+ *    1. The requested value has to be EQUAL to a root in listTeamRoots() after
+ *       resolution — never a prefix match. Equality is what makes traversal a
+ *       non-issue rather than something to filter for: `<root>/../../secrets`
+ *       resolves to a directory that is not any lead's cwd, so it matches
+ *       nothing and comes back unavailable. (A `startsWith` check here would
+ *       reopen exactly that hole, which is why it is spelled out.)
+ *    2. Only the directory is ever negotiated. The filename is the constant
+ *       below, joined on here — the client cannot name the file it reads.
+ *
+ *  Omitting teamRoot reads the first lead's board, which is the whole story
+ *  when there is one team.
+ *
+ *  No lead on the roster, an unrecognized teamRoot, no board file yet, or an
+ *  unreadable one all come back as `available: false` rather than throwing.
+ *  Each is an empty state the view can explain, not a failure — a board simply
+ *  does not exist until the lead delegates something. */
+export function readBoard(teamRoot?: string): {
+  available: boolean;
+  content: string;
+  path?: string;
+  teamRoot?: string;
+} {
+  try {
+    const roots = listTeamRoots();
+    // Rule 1: a lookup in the allowlist, not a sanitization of the input.
+    const root = teamRoot ? roots.find((r) => sameDirectory(r, teamRoot)) : roots[0];
+    if (!root) return { available: false, content: '' };
+
+    // Rule 2: the filename is ours, not theirs. Spelled out rather than shared
+    // with appendBoard's identical literal, which is deliberately left untouched.
+    const boardPath = path.join(root, 'BOARD.md');
+    if (!fs.existsSync(boardPath)) return { available: false, content: '' };
+
+    return {
+      available: true,
+      content: fs.readFileSync(boardPath, 'utf-8'),
+      path: boardPath,
+      teamRoot: root,
+    };
+  } catch {
+    return { available: false, content: '' };
+  }
 }
 
 /** Terminate every employee on server shutdown. */

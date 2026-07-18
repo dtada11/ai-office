@@ -109,6 +109,9 @@ components:
         - $ref: '#/components/schemas/AgentPermissionRequest'
         - $ref: '#/components/schemas/AgentPermissionResolved'
         - $ref: '#/components/schemas/HandoffNotesListed'
+        # Shared meeting board (BOARD.md at the team root)
+        - $ref: '#/components/schemas/BoardContent'
+        - $ref: '#/components/schemas/BoardUpdate'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -155,6 +158,7 @@ components:
         - $ref: '#/components/schemas/HireEmployee'
         - $ref: '#/components/schemas/FireEmployee'
         - $ref: '#/components/schemas/ListHandoffNotes'
+        - $ref: '#/components/schemas/RequestBoard'
         - $ref: '#/components/schemas/SendAgentMessage'
         - $ref: '#/components/schemas/SetAgentModel'
         - $ref: '#/components/schemas/RenameEmployee'
@@ -1083,6 +1087,59 @@ components:
           items:
             $ref: '#/components/schemas/HandoffNoteSummary'
 
+    BoardContent:
+      description: |
+        Response to requestBoard — the whole shared meeting board (BOARD.md at
+        the team root). Sent to the requesting client only, never broadcast:
+        it is a full-file read answering one client's open modal.
+        available is false when no lead is on the roster (so no team root is
+        known), the requested teamRoot is not a known one, or the board has not
+        been written yet — all empty states, not errors.
+      type: object
+      additionalProperties: false
+      required: [type, available, content]
+      properties:
+        type:
+          const: boardContent
+        available:
+          type: boolean
+        content:
+          type: string
+          description: Raw BOARD.md text. Empty string when available is false.
+        path:
+          type: string
+          description: Absolute path the board was read from. Absent when unavailable.
+        teamRoot:
+          type: string
+          description: |
+            The team root this content is for, echoed back so a client that
+            switched teams while a read was in flight can drop the late answer
+            for the team it no longer shows. Absent when unavailable.
+
+    BoardUpdate:
+      description: |
+        One line just appended to the shared board by delegate/collect.
+        Broadcast to every client so an open board view can append it live
+        without re-reading the file.
+      type: object
+      additionalProperties: false
+      required: [type, kind, text, entry, at]
+      properties:
+        type:
+          const: boardUpdate
+        kind:
+          type: string
+          description: Entry category, in Korean — 배분 | 수거 | 메모.
+        text:
+          type: string
+          description: The entry body, without the time and kind prefix.
+        entry:
+          type: string
+          description: The full rendered markdown line as written to BOARD.md.
+        at:
+          type: integer
+          description: Epoch milliseconds the entry was appended.
+
     OfficeNoticeLevel:
       type: string
       enum: [info, error]
@@ -1351,6 +1408,32 @@ components:
           const: listHandoffNotes
         cwd:
           type: string
+
+    RequestBoard:
+      description: |
+        Ask for the shared meeting board (BOARD.md). Answered with boardContent,
+        sent to this client only.
+
+        teamRoot is a choice among known roots, NOT a path to open. There can be
+        several leads, each with its own team root and its own board, so the
+        client has to be able to say which one it means. The server answers only
+        when the value resolves to the cwd of a lead currently on the roster;
+        anything else is refused as unavailable. Omit it to get the first lead's
+        board, which is the whole story when there is only one team.
+
+        The value is never joined onto a filename off the wire and never matched
+        by prefix — see readBoard in server/src/employees.ts. That is what keeps
+        /ws, which can be reached from 0.0.0.0, from becoming an arbitrary file
+        read.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestBoard
+        teamRoot:
+          type: string
+          description: Team root to read the board of. Must equal a hired lead's cwd.
 
     SendAgentMessage:
       description: Send one user message to a specific employee.
