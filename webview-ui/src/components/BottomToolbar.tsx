@@ -12,6 +12,8 @@ interface BottomToolbarProps {
   onToggleEditMode: () => void;
   isStaffOpen: boolean;
   onToggleStaff: () => void;
+  isBoardOpen: boolean;
+  onToggleBoard: () => void;
   isSettingsOpen: boolean;
   onToggleSettings: () => void;
   workspaceFolders: WorkspaceFolder[];
@@ -23,6 +25,8 @@ export function BottomToolbar({
   onToggleEditMode,
   isStaffOpen,
   onToggleStaff,
+  isBoardOpen,
+  onToggleBoard,
   isSettingsOpen,
   onToggleSettings,
   workspaceFolders,
@@ -138,6 +142,14 @@ export function BottomToolbar({
         data-testid="staff-panel-toggle"
       >
         직원 관리
+      </Button>
+      <Button
+        variant={isBoardOpen ? 'active' : 'default'}
+        onClick={onToggleBoard}
+        title="팀 회의록 (BOARD.md)"
+        data-testid="board-toggle"
+      >
+        회의록
       </Button>
       <Button
         variant={isSettingsOpen ? 'active' : 'default'}

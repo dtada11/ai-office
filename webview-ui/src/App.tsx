@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
+import type { BoardTab } from './components/BoardWindow.js';
+import { BoardWindow } from './components/BoardWindow.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import type { ChatPosition, ChatSize } from './components/chatWindowPosition.js';
@@ -187,6 +189,23 @@ function App() {
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isStaffOpen, setIsStaffOpen] = useState(false);
+  /** The shared meeting board window. Its position and size live here for the
+   *  same reason the chat windows' do — so closing and reopening it puts it
+   *  back where the user left it. */
+  const [isBoardOpen, setIsBoardOpen] = useState(false);
+  const [boardPosition, setBoardPosition] = useState<ChatPosition>(() => initialChatPosition(1));
+  const [boardSize, setBoardSize] = useState<ChatSize | undefined>(undefined);
+  /** Which of the window's two tabs is showing. Here rather than in the window
+   *  for the same reason as its position and size: reopening should put the
+   *  user back on the tab they were last reading. */
+  const [boardTab, setBoardTab] = useState<BoardTab>('board');
+  /** The dashboard tab only needs "how many are pending", not the requests
+   *  themselves — narrowed here so the queue objects never cross into it. */
+  const boardPermissionCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const [id, queue] of Object.entries(permissions)) counts[Number(id)] = queue.length;
+    return counts;
+  }, [permissions]);
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   // Same "assume seen, then let the local dismiss override" shape as the
@@ -490,6 +509,8 @@ function App() {
         onToggleEditMode={editor.handleToggleEditMode}
         isStaffOpen={isStaffOpen}
         onToggleStaff={() => setIsStaffOpen((v) => !v)}
+        isBoardOpen={isBoardOpen}
+        onToggleBoard={() => setIsBoardOpen((v) => !v)}
         isSettingsOpen={isSettingsOpen}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         workspaceFolders={workspaceFolders}
@@ -543,6 +564,24 @@ function App() {
               onSend={() => markSending(employee.agentId)}
             />
           ))}
+
+      {!editor.isEditMode && isBoardOpen && (
+        <BoardWindow
+          employees={employees}
+          position={boardPosition}
+          onMove={setBoardPosition}
+          size={boardSize}
+          onResize={setBoardSize}
+          onClose={() => setIsBoardOpen(false)}
+          tab={boardTab}
+          onTabChange={setBoardTab}
+          agentTools={agentTools}
+          permissionCounts={boardPermissionCounts}
+          busy={busy}
+          agentStatuses={agentStatuses}
+          agentTokenInfo={agentTokenInfo}
+        />
+      )}
 
       {!editor.isEditMode && (
         <TokenGauge
