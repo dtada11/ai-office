@@ -19,8 +19,53 @@ import {
   parseBoard,
   parseBoardEntry,
   resolveTeamRoot,
+  splitBoard,
   teamOptions,
 } from '../src/components/boardEntries.js';
+
+const TWO_LAYER = `# BOARD — 팀 회의록 (블랙보드)
+
+> 안내 문구
+
+## 현재 계획
+
+## 목표
+로그인 기능
+
+## 제약
+- 외부 CDN 금지
+
+## 기록
+
+- \`10시 0분 0초\` **[배분]** 팀장 → 개발자: 시작해라
+`;
+
+test('splitBoard: 계획과 기록을 갈라낸다', () => {
+  const { plan, log } = splitBoard(TWO_LAYER);
+  assert.ok(plan.includes('## 목표'));
+  assert.ok(plan.includes('## 제약'));
+  assert.ok(!plan.includes('[배분]'));
+  assert.ok(log.includes('[배분]'));
+  assert.ok(!log.includes('## 목표'));
+});
+
+test('splitBoard: 계획 안의 소제목이 살아남는다 — parseBoard에 통째로 넘기면 사라진다', () => {
+  // parseBoardEntry는 '#'으로 시작하는 줄을 파일 머리말로 보고 버린다. 계획을
+  // 먼저 떼어내지 않으면 팀장이 세운 목표·제약·역할 구조가 화면에서 증발한다.
+  const swallowed = parseBoard(TWO_LAYER).map((e) => e.text);
+  assert.ok(!swallowed.some((t) => t.includes('목표')));
+
+  const { plan } = splitBoard(TWO_LAYER);
+  assert.ok(plan.includes('목표'));
+});
+
+test('splitBoard: 두 층 이전 보드는 전부 기록으로 본다', () => {
+  const old = '# BOARD\n\n> 안내\n\n- `10시 0분 0초` **[배분]** 팀장 → 개발자: 시작\n';
+  const { plan, log } = splitBoard(old);
+  assert.equal(plan, '');
+  assert.equal(log, old);
+  assert.equal(parseBoard(log).length, 1);
+});
 
 /** A line in exactly the shape appendBoard (server/src/employees.ts) writes. */
 const REAL_LINE =

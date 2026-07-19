@@ -41,8 +41,6 @@ export interface OfficeFeed {
   /** Live packet list for the flow canvas. A ref, not state: the canvas reads
    *  it every animation frame and must not re-render the tab to do so. */
   packetsRef: React.RefObject<FlowPacket[]>;
-  /** When the last 수거 landed, for the barrier ripple. Same reasoning. */
-  barrierRef: React.RefObject<number>;
 }
 
 /** Keep at most this many packets in flight; a burst of collects should not
@@ -57,7 +55,6 @@ export function useOfficeFeed(
   const countersRef = useRef<Record<number, AgentCounters>>({});
   const toolStartedAtRef = useRef<Record<string, number>>({});
   const packetsRef = useRef<FlowPacket[]>([]);
-  const barrierRef = useRef<number>(0);
   const seqRef = useRef(0);
 
   const [paused, setPaused] = useState(false);
@@ -101,7 +98,6 @@ export function useOfficeFeed(
       if (packet) {
         packetsRef.current.push(packet);
         if (packetsRef.current.length > PACKET_CAP) packetsRef.current.shift();
-        if (packet.kind === 'back') barrierRef.current = at;
       }
 
       const row = feedRowFor(msg, labelRef.current, at);
@@ -148,6 +144,5 @@ export function useOfficeFeed(
     togglePause,
     clear,
     packetsRef,
-    barrierRef,
   };
 }

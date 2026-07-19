@@ -87,6 +87,19 @@ test('feedRowFor: 회의록 갱신은 회의록 태그가 붙은 board 행이 �
   assert.equal(row?.text, '[배분] 팀장 → 개발자: 탭 작업');
 });
 
+test('feedRowFor: 계획 갱신은 일반 회의록 행과 구별된다', () => {
+  // 계획이 바뀌면 이후 모든 배분의 전제가 바뀐다 — 피드에서 묻히면 안 된다.
+  const row = feedRowFor(
+    { type: 'boardUpdate', kind: '계획', text: '팀장이 현재 계획을 갱신했다' },
+    label,
+    AT,
+  );
+  assert.equal(row?.cls, 'plan');
+  assert.equal(row?.tag, '계획변경');
+  // 다른 kind와 달리 "[계획]" 접두사를 달지 않는다 — 태그가 이미 말하고 있다.
+  assert.equal(row?.text, '팀장이 현재 계획을 갱신했다');
+});
+
 test('feedRowFor: 셸 종료 코드가 0이 아니면 에러 행', () => {
   assert.equal(feedRowFor({ type: 'shellExit', exitCode: 1 }, label, AT)?.cls, 'err');
   assert.equal(feedRowFor({ type: 'shellExit', exitCode: 0 }, label, AT)?.cls, 'done');
@@ -111,54 +124,75 @@ test('pushCapped: 상한을 넘으면 오래된 것부터 버린다', () => {
 
 // ── 팀 흐름 ─────────────────────────────────────────────────────────────────
 
-test('flowPacketFor: 팀장 지시는 팀장 → 팀원(배분)', () => {
-  const p = flowPacketFor(
-    { type: 'agentEvent', agentId: 7, kind: 'system', text: '팀장 지시: 시작' },
-    AT,
-  );
+test('flowPacketFor: 보드의 배분 기록이 팀장 → 팀원 화살표가 된다', () => {
+  const p = flowPacketFor({ type: 'boardUpdate', kind: '배분', agentId: 7 }, AT);
   assert.deepEqual(p, { from: 'LEAD', to: 7, kind: 'out', born: AT });
 });
 
-test('flowPacketFor: 결과는 팀원 → 팀장(수거)', () => {
-  const p = flowPacketFor({ type: 'agentEvent', agentId: 7, kind: 'result', text: '완료' }, AT);
+test('flowPacketFor: 보드의 수거 기록이 팀원 → 팀장 화살표가 된다', () => {
+  const p = flowPacketFor({ type: 'boardUpdate', kind: '수거', agentId: 7 }, AT);
   assert.deepEqual(p, { from: 7, to: 'LEAD', kind: 'back', born: AT });
 });
 
-test('flowPacketFor: 그 외 이벤트는 패킷을 만들지 않는다', () => {
+test('flowPacketFor: 계획 갱신은 팀장 → 보드', () => {
+  const p = flowPacketFor({ type: 'boardUpdate', kind: '계획' }, AT);
+  assert.deepEqual(p, { from: 'LEAD', to: 'BOARD', kind: 'plan', born: AT });
+});
+
+test('flowPacketFor: 턴 이벤트로는 화살표를 만들지 않는다 — 수거 시점이 아니다', () => {
+  // collect가 기다리지 않게 된 뒤로 "팀원이 끝난 순간"과 "팀장이 걷은 순간"은
+  // 다른 시점이다. result로 화살표를 쏘면 걷지도 않은 결과가 날아간다.
+  assert.equal(flowPacketFor({ type: 'agentEvent', agentId: 7, kind: 'result' }, AT), null);
   assert.equal(
-    flowPacketFor({ type: 'agentEvent', agentId: 7, kind: 'text', text: '팀장 지시' }, AT),
+    flowPacketFor({ type: 'agentEvent', agentId: 7, kind: 'system', text: '팀장 지시: 시작' }, AT),
     null,
   );
   assert.equal(flowPacketFor({ type: 'agentToolStart', id: 7 }, AT), null);
-  assert.equal(flowPacketFor({ type: 'agentEvent', kind: 'result' }, AT), null);
+  // 배분·수거인데 누구인지 모르면 그릴 수 없다.
+  assert.equal(flowPacketFor({ type: 'boardUpdate', kind: '배분' }, AT), null);
+  assert.equal(flowPacketFor({ type: 'boardUpdate', kind: '메모' }, AT), null);
 });
 
-test('layoutFlowNodes: 팀장은 중앙, 팀원은 그 주위에', () => {
+test('layoutFlowNodes: 보드가 맨 위, 팀장이 가운데, 팀원이 아래 한 줄', () => {
   const nodes = layoutFlowNodes(
     [
-      { agentId: 1, name: '개발자', active: true, perm: false },
-      { agentId: 2, name: '검증자', active: false, perm: true },
+      { agentId: 1, name: '개발자', active: true, perm: false, done: false },
+      { agentId: 2, name: '검증자', active: false, perm: true, done: false },
     ],
     400,
     300,
   );
-  assert.equal(nodes.length, 3);
-  assert.equal(nodes[0].id, 'LEAD');
-  assert.deepEqual([nodes[0].x, nodes[0].y], [200, 150]);
-  // 첫 팀원은 12시 방향
-  assert.ok(Math.abs(nodes[1].x - 200) < 0.001);
-  assert.ok(nodes[1].y < 150);
-  assert.equal(nodes[1].active, true);
-  assert.equal(nodes[2].perm, true);
+  assert.equal(nodes.length, 4);
+  assert.equal(nodes[0].id, 'BOARD');
+  assert.equal(nodes[1].id, 'LEAD');
+  // 세로 순서가 곧 설명이다: 계획(보드) → 팀장 → 팀원.
+  assert.ok(nodes[0].y < nodes[1].y);
+  assert.ok(nodes[1].y < nodes[2].y);
+  // 보드와 팀장은 같은 세로축에 있다.
+  assert.equal(nodes[0].x, nodes[1].x);
+  // 팀원들은 같은 높이에 나란히.
+  assert.equal(nodes[2].y, nodes[3].y);
+  assert.ok(nodes[2].x < nodes[3].x);
+  assert.equal(nodes[2].active, true);
+  assert.equal(nodes[3].perm, true);
+});
+
+test('layoutFlowNodes: 팀원이 한 명이면 팀장 바로 아래 가운데', () => {
+  const nodes = layoutFlowNodes(
+    [{ agentId: 1, name: '개발자', active: false, perm: false, done: false }],
+    400,
+    300,
+  );
+  assert.equal(nodes[2].x, nodes[1].x);
 });
 
 test('layoutFlowNodes: 긴 이름은 노드 라벨에서 잘린다', () => {
   const nodes = layoutFlowNodes(
-    [{ agentId: 1, name: '아주아주아주긴이름', active: false, perm: false }],
+    [{ agentId: 1, name: '아주아주아주긴이름', active: false, perm: false, done: false }],
     200,
     200,
   );
-  assert.equal(nodes[1].label.length, 7);
+  assert.equal(nodes[2].label.length, 7);
 });
 
 // ── 직원 패널 ───────────────────────────────────────────────────────────────
@@ -219,6 +253,27 @@ test('buildAgentRows: 상태 우선순위는 결재 > 작업 중 > 대기 > 없�
     buildAgentRows(rowsInput({ ...base, busy: { 1: true }, permissionCounts: { 1: 2 } })).at(0)
       ?.statusKind,
     'perm',
+  );
+});
+
+test('buildAgentRows: 끝났지만 아직 안 걷힌 위임은 "수거 대기"로 보인다', () => {
+  // collect가 기다리지 않게 되면서 생긴 상태다. 이게 안 보이면 팀장이 왜 collect를
+  // 다시 부르는지가 화면에서 설명되지 않는다.
+  const base = { employees: [employee({ agentId: 1, work: 'done' as const })] };
+  const row = buildAgentRows(rowsInput(base)).at(0);
+  assert.equal(row?.statusKind, 'uncollected');
+  assert.equal(row?.statusText, '수거 대기');
+
+  // 작업 중이면 그쪽이 먼저다 — 지금 하는 일이 더 급한 정보다.
+  assert.equal(
+    buildAgentRows(rowsInput({ ...base, busy: { 1: true } })).at(0)?.statusKind,
+    'active',
+  );
+  // running/pending은 수거 대기가 아니다.
+  assert.equal(
+    buildAgentRows(rowsInput({ employees: [employee({ agentId: 1, work: 'running' })] })).at(0)
+      ?.statusKind,
+    'idle',
   );
 });
 

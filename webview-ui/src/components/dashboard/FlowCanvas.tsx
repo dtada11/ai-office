@@ -21,14 +21,25 @@ import { easeInOut, layoutFlowNodes, packetProgress } from './dashboardModel.js'
 /** RGB triples, not colours: the packet trail builds gradients from them. */
 const FLOW_OUT_RGB = '116, 111, 255';
 const FLOW_BACK_RGB = '137, 209, 133';
+/** 계획 갱신 (팀장 → 보드). Amber, so the one event that moves everyone's basis
+ *  never reads as just another 배분. */
+const FLOW_PLAN_RGB = '242, 163, 60';
 /** Canvas text. The pixel face carries no Hangul (see index.css), so Korean
  *  labels fall through to the system sans either way — naming it here keeps the
  *  Latin/digit glyphs consistent with the rest of the UI. */
 const FLOW_LEAD_FONT = '700 13px "FS Pixel Sans", sans-serif';
 const FLOW_STAFF_FONT = '12px "FS Pixel Sans", sans-serif';
 
-/** 팀 흐름 — the lead in the middle, staff on a ring, and a packet crossing the
- *  wire each time work is delegated (배분) or a result is collected (수거).
+/** 팀 흐름 — the board on top, the lead under it, the staff along the bottom,
+ *  and a packet crossing each time the plan is rewritten (계획), work is handed
+ *  out (배분), or a result is taken back (수거).
+ *
+ *  The arrangement is the lesson. The board carries the plan; the lead is the
+ *  only one who edits it; every member works off it and reports back up. Read
+ *  downward it is 계획 → 배분 → 작업, read upward it is 수거. An earlier version put
+ *  the lead at the centre of a ring with no board drawn at all, which taught the
+ *  wrong shape — that work revolves around the lead, and that the board is a
+ *  side-effect rather than the thing being agreed on.
  *
  *  Ported from the standalone dashboard's #flowCanvas, redrawn square: this is
  *  a pixel-art office, so nodes and packets are rectangles with hard 2px
@@ -38,8 +49,8 @@ const FLOW_STAFF_FONT = '12px "FS Pixel Sans", sans-serif';
  *   - the rAF loop is started in an effect and cancelled in its cleanup, so
  *     switching to the 회의록 tab (which unmounts this component) stops it. The
  *     loop cannot outlive the canvas.
- *   - packets and the barrier arrive as refs, not props, so a packet in flight
- *     never re-renders React — only the canvas repaints.
+ *   - packets arrive as a ref, not a prop, so a packet in flight never
+ *     re-renders React — only the canvas repaints.
  *   - `staff` DOES change by prop, so it is mirrored into a ref that is
  *     rewritten on every render; the loop reads the ref, which means the effect
  *     never has to restart (and never drops a frame) when the roster changes.
@@ -50,15 +61,15 @@ export interface FlowStaff {
   name: string;
   active: boolean;
   perm: boolean;
+  done: boolean;
 }
 
 interface FlowCanvasProps {
   staff: FlowStaff[];
   packetsRef: React.RefObject<FlowPacket[]>;
-  barrierRef: React.RefObject<number>;
 }
 
-export function FlowCanvas({ staff, packetsRef, barrierRef }: FlowCanvasProps) {
+export function FlowCanvas({ staff, packetsRef }: FlowCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const staffRef = useRef(staff);
   staffRef.current = staff;
@@ -86,28 +97,39 @@ export function FlowCanvas({ staff, packetsRef, barrierRef }: FlowCanvasProps) {
       const now = Date.now();
       const nodes = layoutFlowNodes(staffRef.current, w, h);
       const byId = new Map(nodes.map((n) => [n.id, n]));
-      const lead = nodes[0];
+      const board = nodes[0];
+      const lead = nodes[1];
+      const members = nodes.slice(2);
 
       // Wires first, so everything else sits on top of them.
       ctx.strokeStyle = FLOW_WIRE_COLOR;
       ctx.lineWidth = 2;
-      for (const n of nodes) {
-        if (n.id === 'LEAD') continue;
+      ctx.beginPath();
+      ctx.moveTo(lead.x, lead.y);
+      ctx.lineTo(board.x, board.y);
+      ctx.stroke();
+      for (const n of members) {
         ctx.beginPath();
         ctx.moveTo(lead.x, lead.y);
         ctx.lineTo(n.x, n.y);
         ctx.stroke();
       }
 
-      // The barrier ripple: every teammate's result is in, the lead may proceed.
-      const barrier = barrierRef.current ?? 0;
-      if (barrier && now - barrier < 900) {
-        const p = (now - barrier) / 900;
-        const size = 26 + p * 44;
-        ctx.strokeStyle = flowRgba(FLOW_BACK_RGB, 0.5 * (1 - p));
-        ctx.lineWidth = 2;
-        ctx.strokeRect(lead.x - size, lead.y - size, size * 2, size * 2);
+      // Board → each member, dashed and dim: the reading path. Nothing animates
+      // along it (a member reads the board inside its own turn, and the office
+      // never sees that as an event), but leaving it undrawn would make the
+      // board look like it only ever talks to the lead.
+      ctx.save();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = flowRgba(FLOW_PLAN_RGB, 0.28);
+      ctx.lineWidth = 1;
+      for (const n of members) {
+        ctx.beginPath();
+        ctx.moveTo(board.x, board.y);
+        ctx.lineTo(n.x, n.y);
+        ctx.stroke();
       }
+      ctx.restore();
 
       // Packets in flight. Arrived ones are dropped here rather than on a
       // timer, so nothing accumulates while the tab is hidden and the loop is
@@ -125,7 +147,8 @@ export function FlowCanvas({ staff, packetsRef, barrierRef }: FlowCanvasProps) {
         const y = from.y + (to.y - from.y) * e;
         const x0 = from.x + (to.x - from.x) * e0;
         const y0 = from.y + (to.y - from.y) * e0;
-        const col = pk.kind === 'out' ? FLOW_OUT_RGB : FLOW_BACK_RGB;
+        const col =
+          pk.kind === 'plan' ? FLOW_PLAN_RGB : pk.kind === 'out' ? FLOW_OUT_RGB : FLOW_BACK_RGB;
         const grad = ctx.createLinearGradient(x0, y0, x, y);
         grad.addColorStop(0, flowRgba(col, 0));
         grad.addColorStop(1, flowRgba(col, 0.85));
@@ -143,47 +166,62 @@ export function FlowCanvas({ staff, packetsRef, barrierRef }: FlowCanvasProps) {
 
       // Nodes on top.
       for (const n of nodes) {
+        const isBoard = n.id === 'BOARD';
         const isLead = n.id === 'LEAD';
-        const half = isLead ? 20 : 15;
-        ctx.fillStyle = isLead
-          ? FLOW_LEAD_FILL
-          : n.perm
-            ? FLOW_PERM_FILL
-            : n.active
-              ? FLOW_ACTIVE_FILL
-              : FLOW_NODE_FILL;
-        ctx.fillRect(n.x - half, n.y - half, half * 2, half * 2);
-        ctx.strokeStyle = isLead
-          ? FLOW_LEAD_BORDER
-          : n.perm
-            ? FLOW_PERM_BORDER
-            : n.active
-              ? FLOW_ACTIVE_BORDER
-              : FLOW_NODE_BORDER;
+        // The board is drawn wide rather than square — it is a document, and the
+        // shape says so before the label is read.
+        const halfX = isBoard ? Math.min(64, w * 0.3) : isLead ? 20 : 15;
+        const halfY = isBoard ? 13 : isLead ? 20 : 15;
+
+        ctx.fillStyle = isBoard
+          ? FLOW_NODE_FILL
+          : isLead
+            ? FLOW_LEAD_FILL
+            : n.perm
+              ? FLOW_PERM_FILL
+              : n.active
+                ? FLOW_ACTIVE_FILL
+                : FLOW_NODE_FILL;
+        ctx.fillRect(n.x - halfX, n.y - halfY, halfX * 2, halfY * 2);
+        ctx.strokeStyle = isBoard
+          ? flowRgb(FLOW_PLAN_RGB)
+          : isLead
+            ? FLOW_LEAD_BORDER
+            : n.perm
+              ? FLOW_PERM_BORDER
+              : n.active
+                ? FLOW_ACTIVE_BORDER
+                : FLOW_NODE_BORDER;
         ctx.lineWidth = 2;
-        ctx.strokeRect(n.x - half, n.y - half, half * 2, half * 2);
+        ctx.strokeRect(n.x - halfX, n.y - halfY, halfX * 2, halfY * 2);
+
+        // Finished but uncollected: a filled pip on the top-right corner. The
+        // node itself stays idle-coloured because the member is not working —
+        // what is pending is the lead picking the result up.
+        if (n.done) {
+          ctx.fillStyle = flowRgb(FLOW_BACK_RGB);
+          ctx.fillRect(n.x + halfX - 6, n.y - halfY - 2, 8, 8);
+        }
 
         ctx.textAlign = 'center';
         ctx.fillStyle = FLOW_LABEL_COLOR;
-        if (isLead) {
+        if (isBoard || isLead) {
           ctx.textBaseline = 'middle';
-          ctx.font = FLOW_LEAD_FONT;
-          ctx.fillText('팀장', n.x, n.y + 1);
+          ctx.font = isLead ? FLOW_LEAD_FONT : FLOW_STAFF_FONT;
+          ctx.fillText(n.label, n.x, n.y + 1);
         } else {
-          // Name on the far side from the lead, so a node sitting directly
-          // above the centre does not write its label into the gap between the
-          // two boxes — the panel is short and that gap is only ~30px.
-          const above = n.y < lead.y;
-          ctx.textBaseline = above ? 'bottom' : 'top';
+          // Members sit on the bottom row, so their names go underneath — the
+          // gap to the lead above is where the 배분/수거 packets travel.
+          ctx.textBaseline = 'top';
           ctx.font = FLOW_STAFF_FONT;
-          ctx.fillText(n.label, n.x, n.y + (above ? -half - 5 : half + 5));
+          ctx.fillText(n.label, n.x, n.y + halfY + 5);
         }
       }
     };
 
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [packetsRef, barrierRef]);
+  }, [packetsRef]);
 
   return (
     <canvas ref={canvasRef} className="block w-full h-full" data-testid="dashboard-flow-canvas" />

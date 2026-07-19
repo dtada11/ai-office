@@ -20,6 +20,7 @@ import {
   listHandoffNotes,
   rehireSavedEmployees,
   renameEmployee,
+  replacePlanSection,
   resolveEmployeePermission,
   setEmployeeModelFor,
   setEmployeePersona,
@@ -582,6 +583,19 @@ describe('employees', () => {
       expect(sent.endsWith('로그인 API')).toBe(true);
     });
 
+    it('안내에 보드의 절대경로가 박힌다 — 팀원 cwd는 팀 루트가 아니라 그 하위다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/lead/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '로그인 API');
+
+      // "팀 루트에 있다"는 팀원이 해석할 수 없는 위치다. 경로가 통째로 들어가야
+      // 팀장이 지시문마다 손으로 붙이지 않는다.
+      const sent = created[1].send.mock.calls[0][0] as string;
+      expect(sent).toContain(path.join('/lead', 'BOARD.md'));
+    });
+
     it('팀장 지시로 보낸 것임을 팀원 채팅에 system 이벤트로 남긴다', async () => {
       await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
       await hireEmployee(store, '코더', '/work', 'staff', SONNET);
@@ -597,7 +611,7 @@ describe('employees', () => {
       });
     });
 
-    it('collect는 running인 위임을 전부 동시에 기다린다 — 하나만 끝나도 반환하지 않고, 둘 다 끝나야 반환한다', async () => {
+    it('collect는 아직 작업 중인 팀원을 기다리지 않는다 — 끝난 사람 결과만 즉시 걷는다', async () => {
       await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
       await hireEmployee(store, '코더', '/work', 'staff', SONNET);
       await hireEmployee(store, '검증', '/work2', 'staff', SONNET);
@@ -606,27 +620,39 @@ describe('employees', () => {
       delegation.delegate('코더', '작업1');
       delegation.delegate('검증', '작업2');
 
-      let settled = false;
-      const collectPromise = delegation.collect().then((r) => {
-        settled = true;
-        return r;
-      });
-
-      // 코더만 먼저 끝난다.
+      // 코더만 끝난다. 검증은 계속 running.
       created[1].emit({ kind: 'text', text: '코더 결과' });
       created[1].emit({ kind: 'result', text: '', costUsd: 0 });
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(settled).toBe(false); // 검증이 아직이니 Promise.all은 아직 안 끝난다
 
-      // 검증도 끝난다.
+      // 이 await가 영영 안 풀리면(= 검증을 기다리면) 테스트가 타임아웃으로 죽는다.
+      // 그것 자체가 "기다리지 않는다"의 증거다.
+      const result = await delegation.collect();
+      expect(result).toContain('### 코더\n코더 결과');
+      expect(result).toContain('### 검증 — 작업 중');
+    });
+
+    it('건너뛴 running 위임은 유실되지 않는다 — 끝난 뒤 다음 collect가 집어간다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      await hireEmployee(store, '검증', '/work2', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '작업1');
+      delegation.delegate('검증', '작업2');
+
+      created[1].emit({ kind: 'text', text: '코더 결과' });
+      created[1].emit({ kind: 'result', text: '', costUsd: 0 });
+      const first = await delegation.collect();
+      expect(first).toContain('작업 중');
+
+      // 이제 검증도 끝난다. 앞선 collect가 슬롯을 비우지 않았어야 한다.
       created[2].emit({ kind: 'text', text: '검증 결과' });
       created[2].emit({ kind: 'result', text: '', costUsd: 0 });
 
-      const result = await collectPromise;
-      expect(result).toContain('### 코더\n코더 결과');
-      expect(result).toContain('### 검증\n검증 결과');
+      const second = await delegation.collect();
+      expect(second).toContain('### 검증\n검증 결과');
+      // 코더는 앞에서 수거되며 슬롯이 비었으므로 두 번째엔 안 나온다.
+      expect(second).not.toContain('코더 결과');
     });
 
     it('아무것도 맡기지 않았으면 collect는 그렇게 보고한다', async () => {
@@ -733,6 +759,45 @@ describe('employees', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('replacePlanSection (보드의 현재 계획)', () => {
+    const board = (plan: string, log: string) =>
+      `# BOARD\n\n> 안내\n\n## 현재 계획\n\n${plan}\n\n## 기록\n\n${log}`;
+
+    it('계획을 누적하지 않고 교체한다 — 팀원은 최신 하나만 읽어야 한다', () => {
+      const first = replacePlanSection(board('(아직 없음)', ''), '계획 A');
+      const second = replacePlanSection(first, '계획 B');
+
+      expect(second).toContain('계획 B');
+      expect(second).not.toContain('계획 A');
+    });
+
+    it('기록을 한 줄도 건드리지 않는다', () => {
+      const log =
+        '- `10:00` **[배분]** 팀장 → 코더: 작업1\n- `10:05` **[수거]** 코더 → 팀장: 완료\n';
+      const next = replacePlanSection(board('옛 계획', log), '새 계획');
+
+      expect(next).toContain(log);
+      expect(next).toContain('## 기록');
+    });
+
+    it('계획 섹션이 없는 옛 보드에도 붙는다 — 기존 내용은 기록으로 남는다', () => {
+      const old = '# BOARD\n\n> 안내\n\n- `10:00` **[배분]** 팀장 → 코더: 작업1\n';
+
+      const next = replacePlanSection(old, '새 계획');
+
+      expect(next).toContain('## 현재 계획');
+      expect(next).toContain('새 계획');
+      expect(next).toContain('**[배분]** 팀장 → 코더: 작업1');
+    });
+
+    it('빈 계획은 자리표시자로 둔다 — 섹션 자체가 사라지면 안 된다', () => {
+      const next = replacePlanSection(board('옛 계획', ''), '   ');
+
+      expect(next).toContain('## 현재 계획');
+      expect(next).toContain('(아직 없음)');
     });
   });
 

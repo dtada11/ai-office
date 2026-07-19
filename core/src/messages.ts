@@ -372,6 +372,15 @@ export interface EmployeeInfo {
    * subscription it would be a number nobody is charged.
    */
   costUsd?: number;
+  /**
+   * How far this member's delegated job has got. Absent when the lead has not
+   * given them one.
+   *
+   * pending = held until they clock in. running = working. done = finished but
+   * NOT yet collected — a state that only exists because collect returns without
+   * waiting, and the one worth showing: it is why the lead calls collect again.
+   */
+  work?: 'pending' | 'running' | 'done';
 }
 
 /**
@@ -498,8 +507,12 @@ export interface BoardContent {
  */
 export interface BoardUpdate {
   type: 'boardUpdate';
-  /** Entry category, in Korean — 배분 | 수거 | 메모. */
+  /** Entry category, in Korean — 배분 | 수거 | 메모 | 계획. */
   kind: string;
+  /** The team member the entry is about (배분/수거), absent for entries about the
+   *  team as a whole (계획, and the lead's own 메모). A live view uses this to draw
+   *  the arrow at the moment the board records it. */
+  agentId?: number;
   /** The entry body, without the time and kind prefix. */
   text: string;
   /** The full rendered markdown line as written to BOARD.md. */

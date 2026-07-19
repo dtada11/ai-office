@@ -177,6 +177,10 @@ function broadcastStaff(store: AgentStateStore): void {
       authMode: s.provider.mode,
       ownProvider: s.ownProvider !== undefined,
       costUsd: s.costUsd,
+      // Where this member's delegation stands. 'done' is the state that only
+      // exists because collect no longer waits: finished, but the lead has not
+      // picked it up yet. Absent when nothing is delegated to them.
+      ...(s.delegation ? { work: s.delegation.state } : {}),
     })),
   });
 }
@@ -252,6 +256,9 @@ function onEvent(
       if (waiting?.state === 'running') {
         waiting.state = 'done';
         waiting.resolve(waiting.answer.trim() || '(팀원이 답을 내놓지 않았습니다)');
+        // Finished but uncollected — a state of its own now, so it has to reach
+        // the panel rather than waiting for the lead to come and take it.
+        broadcastStaff(store);
       }
       if (current.handoff) {
         const handoff = current.handoff;
@@ -389,8 +396,81 @@ function startRunningDelegation(
     },
   };
 
+  broadcastStaff(store);
   store.broadcast({ type: 'agentEvent', agentId, kind: 'system', text: announcement });
   sendToEmployee(store, agentId, instruction);
+}
+
+/** The board has two layers, and the split is the whole point:
+ *
+ *    `## 현재 계획` — STATE. Replaced whole by setPlan, never appended to, never
+ *      truncated. This is the one section staff read to know what is true now.
+ *    `## 기록`      — HISTORY. Appended by appendBoard, lines truncated. How the
+ *      team got here, for the lead and the user.
+ *
+ *  A plain append-only log cannot answer "what is the plan right now" — after
+ *  three revisions a staffer would have to reconstruct it from truncated lines.
+ *  Hence the state section.
+ *
+ *  `## 기록` is last so appendBoard keeps appending to the end of the file, exactly
+ *  as before. */
+const PLAN_HEADING = '## 현재 계획';
+const LOG_HEADING = '## 기록';
+const EMPTY_BOARD =
+  '# BOARD — 팀 회의록 (블랙보드)\n\n' +
+  '> 팀장이 계획을 세우고, 배분·수거가 자동 기록된다. 팀의 공유 진실이며, 유저가 그대로 열어볼 수 있다.\n\n' +
+  `${PLAN_HEADING}\n\n(아직 없음)\n\n${LOG_HEADING}\n\n`;
+
+/** Swap the plan section's body for `plan`, leaving everything else — above all
+ *  `## 기록` — byte for byte. Pure so the section-boundary logic can be tested
+ *  without touching a file; losing the log to a bad boundary is the one real
+ *  risk here.
+ *
+ *  A board that predates the two-layer format (no headings) gets them added: the
+ *  plan section goes in ahead of whatever is already there, and the existing
+ *  content is kept underneath as the log. So no migration step is needed. */
+export function replacePlanSection(board: string, plan: string): string {
+  const body = plan.trim() || '(아직 없음)';
+  const planAt = board.indexOf(PLAN_HEADING);
+
+  if (planAt === -1) {
+    // No plan section yet. Split at the log heading if it exists, otherwise treat
+    // everything after the intro as log content and keep it verbatim.
+    const logAt = board.indexOf(LOG_HEADING);
+    if (logAt === -1) {
+      const intro = board.trimEnd();
+      const lead = intro ? `${intro}\n\n` : EMPTY_BOARD.slice(0, EMPTY_BOARD.indexOf(PLAN_HEADING));
+      return `${lead}${PLAN_HEADING}\n\n${body}\n\n${LOG_HEADING}\n\n`;
+    }
+    return `${board.slice(0, logAt)}${PLAN_HEADING}\n\n${body}\n\n${board.slice(logAt)}`;
+  }
+
+  // Body runs from just after the heading line to the next `## ` heading (the log,
+  // normally) or to the end of the file when the plan is the last section.
+  const afterHeading = planAt + PLAN_HEADING.length;
+  const rest = board.slice(afterHeading);
+  const nextAt = rest.search(/\n## /);
+  const tail = nextAt === -1 ? '' : rest.slice(nextAt + 1);
+
+  return `${board.slice(0, planAt)}${PLAN_HEADING}\n\n${body}\n\n${tail}`;
+}
+
+/** Replace the board's current plan. The lead's only way to move the team's
+ *  shared state — staff read this section and work from it, so it is written
+ *  whole rather than appended to. Best-effort like appendBoard: a board write
+ *  must never break the lead's turn.
+ *
+ *  No broadcast of its own: the caller logs the change with appendBoard, which
+ *  already tells live views to re-read the file. */
+function setPlan(teamRoot: string, plan: string): boolean {
+  try {
+    const boardPath = path.join(teamRoot, 'BOARD.md');
+    const existing = fs.existsSync(boardPath) ? fs.readFileSync(boardPath, 'utf-8') : EMPTY_BOARD;
+    fs.writeFileSync(boardPath, replacePlanSection(existing, plan), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The shared meeting board (blackboard) at the team root. delegate/collect
@@ -400,23 +480,30 @@ function startRunningDelegation(
 function appendBoard(
   teamRoot: string,
   store: AgentStateStore,
-  kind: '배분' | '수거' | '메모',
+  kind: '배분' | '수거' | '메모' | '계획',
   text: string,
+  /** Which team member this entry is about, when it is about one. Carried on the
+   *  broadcast so a live view can draw the 배분/수거 arrow at the moment it really
+   *  happens, instead of guessing from turn events — 'done' and '수거' are no
+   *  longer the same instant now that collect does not wait. */
+  agentId?: number,
 ): void {
   try {
     const boardPath = path.join(teamRoot, 'BOARD.md');
     if (!fs.existsSync(boardPath)) {
-      fs.writeFileSync(
-        boardPath,
-        '# BOARD — 팀 회의록 (블랙보드)\n\n' +
-          '> 팀장이 배분하고 팀원 결과가 수거될 때마다 이 파일에 자동 기록된다. 팀의 공유 진실이며, 유저가 그대로 열어볼 수 있다.\n\n',
-        'utf-8',
-      );
+      fs.writeFileSync(boardPath, EMPTY_BOARD, 'utf-8');
     }
     const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
     const entry = `- \`${time}\` **[${kind}]** ${text}\n`;
     fs.appendFileSync(boardPath, entry, 'utf-8');
-    store.broadcast({ type: 'boardUpdate', kind, text, entry: entry.trim(), at: Date.now() });
+    store.broadcast({
+      type: 'boardUpdate',
+      kind,
+      text,
+      entry: entry.trim(),
+      at: Date.now(),
+      ...(agentId === undefined ? {} : { agentId }),
+    });
   } catch {
     // Best-effort: never let a board write break the actual delegation.
   }
@@ -465,8 +552,16 @@ function delegationFor(store: AgentStateStore, teamRoot?: string): Delegation {
 
       // Pull-before-act: when a shared board exists, tell the member to read it
       // before working. Their result gets written back to the board on collect.
+      //
+      // The absolute path is spelled out because a staffer's cwd is a subfolder
+      // of the team root — "팀 루트에 있다" named a place they cannot resolve, and
+      // the lead was pasting the path into every instruction by hand to cover it.
       const boardHint = teamRoot
-        ? '[공유 회의보드] 팀 루트에 BOARD.md(회의록)가 있다. 작업을 시작하기 전에 먼저 읽고, 팀의 확정 사항을 반영해라. 네 결과는 collect 때 이 보드에 기록된다.\n\n'
+        ? `[공유 회의보드] 팀 회의록: ${path.join(teamRoot, 'BOARD.md')}\n` +
+          '작업을 시작하기 전에 먼저 읽어라. `## 현재 계획` 섹션이 지금 유효한 계획이다 — ' +
+          '아래 `## 기록`은 지나간 이력이니 참고만 하고, 충돌하면 현재 계획이 이긴다.\n' +
+          '계획을 바꿔야 한다고 판단되면 직접 고치지 말고 note로 남기고 답변에 적어라 — 판단은 팀장이 한다.\n' +
+          '네 최종 결과는 collect 때 이 보드에 기록된다.\n\n'
         : '';
       const fullInstruction = boardHint + instruction;
       const who = `${member.name}${member.roleLabel ? ` / ${member.roleLabel}` : ''}`;
@@ -483,13 +578,21 @@ function delegationFor(store: AgentStateStore, teamRoot?: string): Delegation {
           done,
           resolve,
         };
+        broadcastStaff(store);
         if (teamRoot)
-          appendBoard(teamRoot, store, '배분', `팀장 → ${who} (보류): ${oneLine(instruction)}`);
+          appendBoard(
+            teamRoot,
+            store,
+            '배분',
+            `팀장 → ${who} (보류): ${oneLine(instruction)}`,
+            agentId,
+          );
         return `${member.name}은(는) 퇴근 상태입니다. 지시를 보류했습니다 — 출근시키면 바로 시작합니다. 결과는 collect로 받으세요.`;
       }
 
       startRunningDelegation(store, agentId, member, fullInstruction, '팀장 지시');
-      if (teamRoot) appendBoard(teamRoot, store, '배분', `팀장 → ${who}: ${oneLine(instruction)}`);
+      if (teamRoot)
+        appendBoard(teamRoot, store, '배분', `팀장 → ${who}: ${oneLine(instruction)}`, agentId);
 
       return overwritingDone
         ? `${member.name}에게 맡겼습니다. (직전 결과가 수거되지 않아 버려집니다.) 결과는 collect로 받으세요.`
@@ -501,7 +604,7 @@ function delegationFor(store: AgentStateStore, teamRoot?: string): Delegation {
       if (entries.length === 0) return '맡긴 일이 없습니다.';
 
       const sections = await Promise.all(
-        entries.map(async ([, member]) => {
+        entries.map(async ([agentId, member]) => {
           const label = `${member.name}${member.roleLabel ? ` / ${member.roleLabel}` : ''}`;
           // Non-null: this entry passed the s.delegation filter above.
           const delegation = member.delegation!;
@@ -513,18 +616,71 @@ function delegationFor(store: AgentStateStore, teamRoot?: string): Delegation {
             return `### ${label} — 출근 대기 중\n지시: ${delegation.instruction}`;
           }
 
-          // 'running' and already-'done' both funnel through the same await —
-          // a 'done' one's promise is already settled, so this returns at once.
+          // Still working: report and move on rather than waiting. This is what
+          // makes collect a snapshot instead of a barrier — the lead stays free
+          // to answer whoever already finished, and the slowest member no longer
+          // holds the whole team. The slot is left intact, so the next collect
+          // picks this one up.
+          if (delegation.state === 'running') {
+            return `### ${label} — 작업 중`;
+          }
+
+          // Only 'done' reaches here, and a 'done' delegation's promise is already
+          // settled (result at 'result' above, or the timeout in
+          // startRunningDelegation), so this returns at once. Awaiting rather than
+          // reading delegation.answer is deliberate: the timeout path resolves with
+          // its own message and never writes .answer, so reading that field
+          // directly would collect a timed-out member as an empty string.
           const answer = await delegation.done;
-          if (member.delegation === delegation) member.delegation = undefined;
+          if (member.delegation === delegation) {
+            member.delegation = undefined;
+            // The slot just emptied — say so, or the panel keeps showing this
+            // member as "수거 대기" until some unrelated roster change repaints.
+            broadcastStaff(store);
+          }
           if (teamRoot)
-            appendBoard(teamRoot, store, '수거', `${label} → 팀장: ${oneLine(answer, 300)}`);
+            appendBoard(
+              teamRoot,
+              store,
+              '수거',
+              `${label} → 팀장: ${oneLine(answer, 300)}`,
+              agentId,
+            );
           return `### ${label}\n${answer}`;
         }),
       );
 
       return sections.join('\n\n');
     },
+
+    note: (text) => {
+      if (!teamRoot) return '공유 회의보드가 없습니다.';
+      appendBoard(teamRoot, store, '메모', `팀장: ${oneLine(text, 300)}`);
+      return '회의록에 기록했습니다.';
+    },
+
+    setPlan: (plan) => {
+      if (!teamRoot) return '공유 회의보드가 없습니다.';
+      if (!setPlan(teamRoot, plan)) return '보드를 쓰지 못했습니다.';
+      // Logged under its own kind, not '메모': the plan moving is the one event
+      // that changes what every later delegation is built on, so a live view has
+      // to be able to tell it apart from an ordinary note.
+      appendBoard(teamRoot, store, '계획', '팀장이 현재 계획을 갱신했다');
+      return '현재 계획을 갱신했습니다.';
+    },
+  };
+}
+
+/** A staffer's own line on the shared board — the write side they otherwise
+ *  don't have (their auto-approvals are read-only, and officeTools is the lead's).
+ *  The team root is resolved per call rather than captured at hire, so a member
+ *  hired before the lead still finds the board once the lead exists. */
+function noteFor(store: AgentStateStore, name: string, cwd: string): (text: string) => string {
+  return (text) => {
+    const root = listTeamRoots().find((r) => pathMatches(cwd, r, 'dirPrefix'));
+    if (!root) return '공유 회의보드가 없습니다.';
+    appendBoard(root, store, '메모', `${name}: ${oneLine(text, 300)}`);
+    return '회의록에 기록했습니다.';
   };
 }
 
@@ -903,6 +1059,7 @@ export async function clockIn(
     current.role === 'lead' ? delegationFor(store, current.cwd) : undefined,
     current.persona,
     note ?? undefined,
+    current.role === 'lead' ? undefined : noteFor(store, current.name, current.cwd),
   );
 
   // A delegation held while this member was off duty fires now that they have a
@@ -1054,6 +1211,7 @@ export async function hireEmployee(
     role === 'lead' ? delegationFor(store, cwd) : undefined,
     persona,
     handoffNote,
+    role === 'lead' ? undefined : noteFor(store, trimmedName, cwd),
   );
   broadcastStaff(store);
   saveStaff();

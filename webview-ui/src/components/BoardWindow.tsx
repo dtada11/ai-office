@@ -4,7 +4,7 @@ import type { EmployeeInfo } from '../hooks/useExtensionMessages.js';
 import { useWindowDrag } from '../hooks/useWindowDrag.js';
 import { transport } from '../transport/index.js';
 import type { BoardEntry } from './boardEntries.js';
-import { parseBoard, resolveTeamRoot, teamOptions } from './boardEntries.js';
+import { parseBoard, resolveTeamRoot, splitBoard, teamOptions } from './boardEntries.js';
 import type { ChatPosition, ChatSize } from './chatWindowPosition.js';
 import type { DashboardTool } from './dashboard/dashboardModel.js';
 import { DashboardTab } from './dashboard/DashboardTab.js';
@@ -175,7 +175,10 @@ export function BoardWindow({
     requestBoard(activeRoot);
   }, [activeRoot]);
 
-  const entries = board.available ? parseBoard(board.content) : [];
+  // Split before parsing: the plan carries the lead's own `##` sub-headings, and
+  // the entry parser treats leading `#` as file boilerplate to drop.
+  const { plan, log } = board.available ? splitBoard(board.content) : { plan: '', log: '' };
+  const entries = board.available ? parseBoard(log) : [];
 
   // Newest entries are appended at the bottom, so land there — the last thing
   // that happened is what someone opening the minutes wants.
@@ -294,7 +297,25 @@ export function BoardWindow({
           className="flex-1 min-h-0 overflow-y-auto bg-bg-dark border-2 border-border rounded-none p-6 flex flex-col"
           data-testid="board-log"
         >
-          {entries.length === 0 ? (
+          {/* State above history. The plan is what is true now — a member reads
+              this and nothing else to know what to build — so it sits at the top
+              in full, never truncated, rather than being scrolled to through the
+              log. Shown as its own markdown so the lead's 목표/제약/역할 headings
+              survive. */}
+          {plan && (
+            <div className="mb-6 shrink-0" data-testid="board-plan">
+              <div className="text-2xs text-warning font-bold mb-2">현재 계획</div>
+              <div className="text-xs whitespace-pre-wrap border-l-2 border-warning pl-6 py-2">
+                {plan}
+              </div>
+            </div>
+          )}
+
+          {plan && entries.length > 0 && (
+            <div className="text-2xs text-text-muted mb-2 shrink-0">기록</div>
+          )}
+
+          {entries.length === 0 && !plan ? (
             <div className="text-xs text-text-muted whitespace-pre-wrap" data-testid="board-empty">
               {teams.length === 0
                 ? '아직 회의록이 없습니다.\n팀장을 고용하고 팀원에게 일을 배분하면 여기에 쌓입니다.'

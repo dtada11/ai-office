@@ -12,6 +12,8 @@ const fakeDelegation: Delegation = {
   listStaff: () => '',
   delegate: () => '',
   collect: async () => '',
+  note: () => '',
+  setPlan: () => '',
 };
 
 /** ClaudeEmployee.handle() only needs `host.onEvent` — it never touches `q`/`push`,

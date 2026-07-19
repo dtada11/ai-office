@@ -39,6 +39,9 @@ const FEED_TAG_COLOR: Record<FeedClass, string> = {
   err: 'text-status-error',
   life: 'text-text-muted',
   board: 'text-warning',
+  // Brighter than 'board', and bold: a plan change moves the ground under every
+  // later 배분, so it has to be findable when scrolling back through the feed.
+  plan: 'text-warning font-bold',
 };
 
 function Panel({
@@ -252,7 +255,7 @@ export function DashboardTab({
         </Panel>
 
         <Panel
-          title="팀 흐름 — 배분 → 수거 (배리어)"
+          title="팀 흐름 — 보드에 계획 → 배분 → 수거 (기다리지 않음)"
           testId="dashboard-flow"
           bodyClass="overflow-hidden"
         >
@@ -264,10 +267,10 @@ export function DashboardTab({
               className="w-full h-full flex items-center justify-center text-2xs text-text-muted px-10 text-center"
               data-testid="dashboard-flow-empty"
             >
-              팀장이 팀원에게 배분하면 여기서 데이터가 넘어가는 게 보입니다.
+              팀장이 보드에 계획을 적고 팀원에게 배분하면, 여기서 오가는 게 보입니다.
             </div>
           ) : (
-            <FlowCanvas staff={staff} packetsRef={feed.packetsRef} barrierRef={feed.barrierRef} />
+            <FlowCanvas staff={staff} packetsRef={feed.packetsRef} />
           )}
         </Panel>
       </div>

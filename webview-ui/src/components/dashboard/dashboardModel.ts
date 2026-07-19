@@ -34,8 +34,21 @@ export interface DashboardMessage {
 }
 
 /** Which colour a feed row gets. Named after what happened, not after a colour,
- *  so restyling the panel never means re-deciding what each event is. */
-export type FeedClass = 'tool' | 'done' | 'perm' | 'result' | 'system' | 'err' | 'life' | 'board';
+ *  so restyling the panel never means re-deciding what each event is.
+ *
+ *  'plan' is separate from 'board' on purpose: the plan moving is the event that
+ *  changes what every later delegation is built on, and it must not read as one
+ *  more line of minutes. */
+export type FeedClass =
+  | 'tool'
+  | 'done'
+  | 'perm'
+  | 'result'
+  | 'system'
+  | 'err'
+  | 'life'
+  | 'board'
+  | 'plan';
 
 export interface FeedRow {
   /** Monotonic, assigned by the hook — used as the React key, because two rows
@@ -154,8 +167,11 @@ export function feedRowFor(
       );
     case 'boardUpdate':
       // The minutes themselves live in the other tab; this line is only the
-      // "something was written" beat, which is what a feed is for.
-      return row('board', '회의록', 'BOARD.md', `[${msg.kind ?? ''}] ${short(msg.text, 100)}`);
+      // "something was written" beat, which is what a feed is for. The plan
+      // moving gets its own class so it stands out from the running commentary.
+      return msg.kind === '계획'
+        ? row('plan', '계획변경', 'BOARD.md', short(msg.text, 100))
+        : row('board', '회의록', 'BOARD.md', `[${msg.kind ?? ''}] ${short(msg.text, 100)}`);
     default:
       return null;
   }
@@ -171,14 +187,18 @@ export function pushCapped<T>(rows: T[], row: T, cap = FEED_CAP): T[] {
 
 // ── 팀 흐름 (배분 → 수거) ───────────────────────────────────────────────────
 
-/** Either a staff member's agentId, or the lead at the centre. */
-export type FlowNodeId = number | 'LEAD';
+/** A staff member's agentId, the lead, or the board itself. The board is a node
+ *  because it is where the team's shared plan lives: the lead writes it and every
+ *  member reads it, and that is the part of the arrangement a picture has to
+ *  carry. */
+export type FlowNodeId = number | 'LEAD' | 'BOARD';
 
 export interface FlowPacket {
   from: FlowNodeId;
   to: FlowNodeId;
-  /** out = 배분 (lead → staff), back = 수거 (staff → lead). */
-  kind: 'out' | 'back';
+  /** out = 배분 (lead → staff), back = 수거 (staff → lead),
+   *  plan = 계획 갱신 (lead → board). */
+  kind: 'out' | 'back' | 'plan';
   born: number;
 }
 
@@ -187,17 +207,19 @@ export const PACKET_MS = 1300;
 
 /** Which packet, if any, a broadcast means.
  *
- *  Basis (unchanged from the standalone dashboard): the office broadcasts
- *  `agentEvent{kind:'system', text:'팀장 지시…'}` to the staff member being
- *  delegated to, and a `result` is that member's output coming back. */
+ *  Read off the board's own entries, which is the only place that knows what
+ *  really happened and when. The previous version guessed from turn events —
+ *  a system message matching /팀장 지시/ for 배분, and any `result` for 수거 — and
+ *  both guesses are now wrong: `result` fires when a member finishes, but the
+ *  수거 happens later, whenever the lead next calls collect (which no longer
+ *  waits). It also fired for turns that were never delegated work at all, e.g.
+ *  the user chatting with a member directly. */
 export function flowPacketFor(msg: DashboardMessage, at: number): FlowPacket | null {
-  if (msg.type !== 'agentEvent' || msg.agentId === undefined) return null;
-  if (msg.kind === 'system' && /팀장\s*지시/.test(msg.text ?? '')) {
-    return { from: 'LEAD', to: msg.agentId, kind: 'out', born: at };
-  }
-  if (msg.kind === 'result') {
-    return { from: msg.agentId, to: 'LEAD', kind: 'back', born: at };
-  }
+  if (msg.type !== 'boardUpdate') return null;
+  if (msg.kind === '계획') return { from: 'LEAD', to: 'BOARD', kind: 'plan', born: at };
+  if (msg.agentId === undefined) return null;
+  if (msg.kind === '배분') return { from: 'LEAD', to: msg.agentId, kind: 'out', born: at };
+  if (msg.kind === '수거') return { from: msg.agentId, to: 'LEAD', kind: 'back', born: at };
   return null;
 }
 
@@ -208,30 +230,51 @@ export interface FlowNode {
   label: string;
   active: boolean;
   perm: boolean;
+  /** Finished, waiting for the lead to collect. */
+  done: boolean;
 }
 
-/** Lead at the centre, staff on a ring around it. Pure geometry so the layout
- *  is decidable without a canvas. */
+/** Three rows, top to bottom: board, lead, staff.
+ *
+ *  A ring put the lead at the centre, which says "the lead is what everything
+ *  revolves around". That is not how the team works: the board holds the plan,
+ *  the lead is who edits it, and the members work off it. Reading the picture
+ *  downward gives that order — 계획 → 배분 → 작업 — and reading it upward gives the
+ *  way back, 수거. Pure geometry so the layout is decidable without a canvas. */
 export function layoutFlowNodes(
-  staff: Array<{ agentId: number; name: string; active: boolean; perm: boolean }>,
+  staff: Array<{ agentId: number; name: string; active: boolean; perm: boolean; done: boolean }>,
   width: number,
   height: number,
 ): FlowNode[] {
   const cx = width / 2;
-  const cy = height / 2;
+  // Fractions of the height rather than fixed offsets: the panel is short, and
+  // the three rows have to stay apart at any size it is given.
   const nodes: FlowNode[] = [
-    { id: 'LEAD', x: cx, y: cy, label: '팀장', active: false, perm: false },
+    {
+      id: 'BOARD',
+      x: cx,
+      y: height * 0.16,
+      label: '보드',
+      active: false,
+      perm: false,
+      done: false,
+    },
+    { id: 'LEAD', x: cx, y: height * 0.5, label: '팀장', active: false, perm: false, done: false },
   ];
-  const r = Math.max(48, Math.min(width, height) * 0.34);
+
+  // Staff spread across the bottom. One member sits centred under the lead;
+  // more fan out evenly, held inside the panel by the 0.12/0.88 margins.
+  const y = height * 0.84;
   staff.forEach((s, i) => {
-    const ang = -Math.PI / 2 + (staff.length === 1 ? 0 : (i / staff.length) * Math.PI * 2);
+    const t = staff.length === 1 ? 0.5 : i / (staff.length - 1);
     nodes.push({
       id: s.agentId,
-      x: cx + Math.cos(ang) * r,
-      y: cy + Math.sin(ang) * r,
+      x: width * (0.12 + t * 0.76),
+      y,
       label: s.name.length > 7 ? s.name.slice(0, 7) : s.name,
       active: s.active,
       perm: s.perm,
+      done: s.done,
     });
   });
   return nodes;
@@ -261,6 +304,8 @@ export interface DashboardEmployee {
   contextTokens?: number;
   contextLimit?: number;
   costUsd?: number;
+  /** How far their delegated job has got; see EmployeeState.work. */
+  work?: 'pending' | 'running' | 'done';
 }
 
 /** The open-tool fields this panel reads (structurally a ToolActivity). */
@@ -287,7 +332,7 @@ export interface AgentRow {
   name: string;
   roleText: string;
   isLead: boolean;
-  statusKind: 'perm' | 'active' | 'waiting' | 'idle';
+  statusKind: 'perm' | 'active' | 'uncollected' | 'waiting' | 'idle';
   statusText: string;
   model: string;
   context: string;
@@ -344,16 +389,25 @@ export function buildAgentRows(input: AgentRowsInput): AgentRow[] {
     const busy = input.busy[e.agentId] === true || open.length > 0;
     const waiting = input.statuses[e.agentId] === 'waiting';
 
+    // 'done' outranks idle but not an in-flight turn: a member whose result is
+    // sitting uncollected can still be doing something else (the user talking to
+    // them), and what they are doing now is the more urgent read.
     const statusKind: AgentRow['statusKind'] = perm
       ? 'perm'
       : busy
         ? 'active'
-        : waiting
-          ? 'waiting'
-          : 'idle';
-    const statusText = { perm: '결재 대기', active: '작업 중', waiting: '대기', idle: '—' }[
-      statusKind
-    ];
+        : e.work === 'done'
+          ? 'uncollected'
+          : waiting
+            ? 'waiting'
+            : 'idle';
+    const statusText = {
+      perm: '결재 대기',
+      active: '작업 중',
+      uncollected: '수거 대기',
+      waiting: '대기',
+      idle: '—',
+    }[statusKind];
 
     const token = input.tokens[e.agentId];
     const counter = input.counters[e.agentId] ?? { started: 0, done: 0 };
@@ -389,10 +443,10 @@ export function buildAgentRows(input: AgentRowsInput): AgentRow[] {
   });
 }
 
-/** Who to draw on the flow ring: the live staff, with their current state. */
+/** Who to draw on the bottom row: the live staff, with their current state. */
 export function flowStaff(
   rows: AgentRow[],
-): Array<{ agentId: number; name: string; active: boolean; perm: boolean }> {
+): Array<{ agentId: number; name: string; active: boolean; perm: boolean; done: boolean }> {
   return rows
     .filter((r) => !r.isLead)
     .map((r) => ({
@@ -400,5 +454,6 @@ export function flowStaff(
       name: r.name,
       active: r.statusKind === 'active',
       perm: r.statusKind === 'perm',
+      done: r.statusKind === 'uncollected',
     }));
 }

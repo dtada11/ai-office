@@ -43,7 +43,35 @@ export function parseBoardEntry(line: string): BoardEntry | null {
   return { time: '', kind: '', text: trimmed };
 }
 
-/** The whole file → entries, oldest first (the order they were appended).
+const PLAN_HEADING = '## 현재 계획';
+const LOG_HEADING = '## 기록';
+
+/** The board's two layers, split apart.
+ *
+ *  `plan` is state — the one plan that is true right now, which the lead rewrites
+ *  whole and every member reads before working. `log` is history: the appended
+ *  배분/수거/메모 lines.
+ *
+ *  They have to be separated before parsing, because the plan is the lead's own
+ *  markdown and carries its own `##` sub-headings (목표, 제약, 역할 …). parseBoardEntry
+ *  drops anything starting with `#` as file boilerplate, which would swallow
+ *  exactly those — the structure the lead put there on purpose.
+ *
+ *  A board written before the two-layer format has neither heading; it is all
+ *  log, which is what it was. */
+export function splitBoard(markdown: string): { plan: string; log: string } {
+  const planAt = markdown.indexOf(PLAN_HEADING);
+  const logAt = markdown.indexOf(LOG_HEADING);
+  if (planAt === -1 || logAt === -1 || logAt < planAt) {
+    return { plan: '', log: markdown };
+  }
+  return {
+    plan: markdown.slice(planAt + PLAN_HEADING.length, logAt).trim(),
+    log: markdown.slice(logAt + LOG_HEADING.length),
+  };
+}
+
+/** The log → entries, oldest first (the order they were appended).
  *
  *  One line is one entry: every appendBoard call site runs its text through
  *  oneLine(), which collapses \s+ to spaces, so an entry cannot span lines and

@@ -477,6 +477,7 @@ it('B-9: 다른 이름의 신입이 전임자 노트를 이어받아도, 권한�
     undefined,
     undefined,
     expect.stringContaining('DB 마이그레이션'),
+    expect.any(Function), // 팀원의 보드 note 콜백
   );
   // 권한은 넘어가지 않는다
   expect(
