@@ -2,19 +2,33 @@
 
 Pixel art office where AI agents (Claude Code terminals today, any tool tomorrow) become animated characters. Ships as a **VS Code extension** and an **`npx pixel-agents` standalone CLI** from the same source tree.
 
-## ⚠️ 이 저장소는 포크다 — "AI 오피스" (korean-ui 브랜치)
+## ⚠️ 이 저장소는 포크다 — "AI 오피스" (`main` 브랜치)
 
-이 문서의 아래 내용은 **원본(upstream) pixel-agents 기준**이고 여전히 대부분 유효하지만, 이 포크(`origin` = github.com/dtada11/ai-office, 작업 브랜치 `korean-ui`)에는 원본에 없는 기능 계층이 얹혀 있다. 이 포크에서 코딩할 때 먼저 알아야 할 것:
+이 문서의 아래 내용은 **원본(upstream) pixel-agents 기준**이고 여전히 대부분 유효하지만, 이 포크(`origin` = github.com/dtada11/ai-office, 작업 브랜치 `main`)에는 원본에 없는 기능 계층이 얹혀 있다. 이 포크에서 코딩할 때 먼저 알아야 할 것:
 
 - **직원 = 세션 = 캐릭터** — `server/src/employee.ts`(어댑터 경계 — Agent SDK 타입이 이 파일 밖으로 못 나감) + `server/src/employees.ts`(직원 레지스트리, agentId 키). 고용하면 Claude Agent SDK 상주 세션이 열리고 캐릭터를 **직접 생성**한다(폴더 감시 미등록 — 터미널 세션 혼입 방지). 승인 대기는 `canUseTool`→웹뷰 결재 카드, 타임아웃 30분.
 - **직급·위임** — 부사장(vp) 세션에만 인프로세스 MCP 도구 `list_staff`/`delegate` 주입. 위임 타임아웃 15분.
 - **인증 2모드** — `server/src/aiProvider.ts`: subscription(기본)/apiKey. Anthropic 정책상 제3자 앱이 구독 OAuth 토큰으로 요청을 라우팅할 수 없어 oauthToken 모드는 제거됨. 사무실 기본값(`~/.pixel-agents/ai-provider.json`) + 직원별 덮어쓰기. `buildEnv()`가 SDK `options.env`를 조립 (⚠️ SDK env는 병합이 아니라 전체 교체 — `process.env` spread 필수).
 - **게이지** — `planUsage.ts` + `usageProbe.ts`(`claude -p --no-session-persistence /usage` 실측, 2분 주기, 1분 스로틀 주의), `claudeSettings.ts`.
 - **웹뷰 추가분** — `EmployeeChat.tsx`(직원별 채팅창, 드래그 이동), `StaffPanel.tsx`(직원 관리), `TokenGauge.tsx`, `chatWindowPosition.ts`, `models.ts`. UI 전체 한글화.
-- **테스트 기준선** — 서버 테스트 9건이 원래 실패(툴 상태 문구 한글화 후 영어 기대값 방치 + mockClaudeRunner 타임아웃). 이보다 늘지 않으면 회귀 없음.
+- **테스트 기준선 = 전부 초록** (2026-07-19 기준 서버 494 / 웹뷰 197). 실패 0이 기준선이다. 빨간 걸 발견하면 기준선이 아니라 회귀다 — 예전에 "9건은 원래 실패"라는 기준선을 달고 다니다 진짜 회귀를 못 본 적이 있다.
 - **커밋 메시지는 한글.** 설계 문서·작업 로그의 원본은 볼트 `F:\SecondBrain\200 프로젝트작업대\210 Projects\AI 사무실\`.
 
 아래 원본 레퍼런스 중 이 포크에서 어긋나는 부분: Project Identity(우리는 별도 저장소), 26/18개 메시지 수(직원 관련 메시지 추가됨), webview 컴포넌트 목록.
+
+### 상류와의 관계 — 독립 (2026-07-19 결정)
+
+**`upstream`(pixel-agents-hq/pixel-agents)에서 통째로 머지하지 않는다.** 필요한 수정이 보이면 `git cherry-pick`으로 하나씩 골라 가져온다.
+
+근거:
+
+- 포크 이후 **122커밋, 186파일, +24,060/−2,448**. 직원·팀·회의보드·출퇴근·오토모드·한글화는 전부 이쪽에만 있다. 사실상 다른 제품이다.
+- 실제로 **포크 이후 상류를 머지한 적이 한 번도 없다.** 이 결정은 새 방침이 아니라 이미 하고 있던 것을 명시한 것이다.
+- 상류가 현재 만드는 것(e2e 영상 나레이션, 카펫·구역, 에디터 색상 선택기, VS Code↔standalone 동등화)은 대부분 이 포크의 방향과 어긋난다. 특히 VS Code 경로는 이쪽에서 접기로 한 방향이다.
+
+**실무상 의미:** 이 저장소에서 과설계·미사용 코드를 지울 때 "상류가 업데이트로 되돌려놓을까" 걱정하지 않아도 된다. 되돌아올 경로가 없다.
+
+**라이선스:** MIT는 포크·수정·분기를 명시적으로 허용하며 상류 추종 의무가 없다. 유일한 조건인 저작권 표시 보존은 `LICENSE`(Copyright (c) 2026 Pablo De Lucca) 원문 유지 + README 크레딧 섹션으로 충족하고 있다. **이 두 가지는 앞으로도 절대 지우지 않는다.**
 
 ## Architecture
 
