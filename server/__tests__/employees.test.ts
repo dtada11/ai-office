@@ -560,8 +560,26 @@ describe('employees', () => {
       // Promise를 반환한다면 .toContain은 타입상 실패한다.
       expect(r1).toContain('코더에게 맡겼습니다');
       expect(r2).toContain('검증에게 맡겼습니다');
-      expect(created[1].send).toHaveBeenCalledWith('로그인 API');
-      expect(created[2].send).toHaveBeenCalledWith('인증 테스트');
+      // 지시문 앞에는 공유 회의보드 안내가 붙는다(아래 전용 테스트가 그 문구를
+      // 고정한다). 여기서 보는 것은 "각자에게 자기 지시가 갔는가"뿐이다.
+      expect(created[1].send).toHaveBeenCalledWith(expect.stringContaining('로그인 API'));
+      expect(created[2].send).toHaveBeenCalledWith(expect.stringContaining('인증 테스트'));
+    });
+
+    it('지시문 앞에 공유 회의보드를 먼저 읽으라는 안내가 붙는다', async () => {
+      await hireEmployee(store, '팀장', '/lead', 'lead', SONNET);
+      await hireEmployee(store, '코더', '/work', 'staff', SONNET);
+      const delegation = created[0].startedWithDelegation!;
+
+      delegation.delegate('코더', '로그인 API');
+
+      // 팀장이 있으면 그 cwd가 곧 팀 루트라 안내는 항상 붙는다. 안내가 지시문
+      // *앞*에 와야 팀원이 작업을 시작하기 전에 보드를 읽는다 — 순서가 뒤집히면
+      // 이미 손을 댄 뒤에 확정 사항을 알게 된다.
+      const sent = created[1].send.mock.calls[0][0] as string;
+      expect(sent).toMatch(/^\[공유 회의보드\]/);
+      expect(sent).toContain('BOARD.md');
+      expect(sent.endsWith('로그인 API')).toBe(true);
     });
 
     it('팀장 지시로 보낸 것임을 팀원 채팅에 system 이벤트로 남긴다', async () => {
@@ -649,7 +667,7 @@ describe('employees', () => {
       await clockIn(store, 2);
 
       expect(created).toHaveLength(2);
-      expect(created[1].send).toHaveBeenCalledWith('로그인 버그 수정');
+      expect(created[1].send).toHaveBeenCalledWith(expect.stringContaining('로그인 버그 수정'));
       expect(broadcasts).toContainEqual({
         type: 'agentEvent',
         agentId: 2,
@@ -697,7 +715,7 @@ describe('employees', () => {
       const result = delegation.delegate('코더', '작업2');
 
       expect(result).toContain('버려집니다');
-      expect(created[1].send).toHaveBeenCalledWith('작업2');
+      expect(created[1].send).toHaveBeenCalledWith(expect.stringContaining('작업2'));
     });
 
     it('15분 안에 끝나지 않으면 시간 초과로 처리되고 collect가 그 사실을 보고한다', async () => {
