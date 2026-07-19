@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { AllowlistEmployee, AllowlistEntry } from '../../../core/src/messages.js';
 import type { OfficeProviderInfo } from '../hooks/useExtensionMessages.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
+import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { AllowlistSection } from './AllowlistSection.js';
 import { ProviderPicker } from './ProviderPicker.js';
@@ -90,30 +91,37 @@ export function SettingsModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="설정">
-      <MenuItem
-        onClick={() => {
-          transport.send({ type: 'openSessionsFolder' });
-          onClose();
-        }}
-      >
-        세션 폴더 열기
-      </MenuItem>
-      <MenuItem
-        onClick={() => {
-          transport.send({ type: 'exportLayout' });
-          onClose();
-        }}
-      >
-        레이아웃 내보내기
-      </MenuItem>
-      <MenuItem
-        onClick={() => {
-          transport.send({ type: 'importLayout' });
-          onClose();
-        }}
-      >
-        레이아웃 가져오기
-      </MenuItem>
+      {/* Hide in standalone browser mode: these three need an IDE host to open a
+          folder or a file dialog, so the standalone server drops them (see the
+          default branch of clientMessageHandler). Shown, they do nothing. */}
+      {!isBrowserRuntime && (
+        <>
+          <MenuItem
+            onClick={() => {
+              transport.send({ type: 'openSessionsFolder' });
+              onClose();
+            }}
+          >
+            세션 폴더 열기
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              transport.send({ type: 'exportLayout' });
+              onClose();
+            }}
+          >
+            레이아웃 내보내기
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              transport.send({ type: 'importLayout' });
+              onClose();
+            }}
+          >
+            레이아웃 가져오기
+          </MenuItem>
+        </>
+      )}
       <MenuItem
         onClick={() => {
           transport.send({ type: 'addExternalAssetDirectory' });
