@@ -44,7 +44,7 @@ import {
   TILE_SIZE,
 } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
-import { matrixEffectSeeds } from './matrixEffect.js';
+import { startMatrixEffect } from './matrixEffect.js';
 import { createPet, updatePet } from './petEntity.js';
 
 export class OfficeState {
@@ -380,9 +380,7 @@ export class OfficeState {
       ch.folderName = folderName;
     }
     if (!skipSpawnEffect) {
-      ch.matrixEffect = 'spawn';
-      ch.matrixEffectTimer = 0;
-      ch.matrixEffectSeeds = matrixEffectSeeds();
+      startMatrixEffect(ch, 'spawn');
     }
     this.characters.set(id, ch);
   }
@@ -399,9 +397,7 @@ export class OfficeState {
     if (this.selectedAgentId === id) this.selectedAgentId = null;
     if (this.cameraFollowId === id) this.cameraFollowId = null;
     // Start despawn animation instead of immediate delete
-    ch.matrixEffect = 'despawn';
-    ch.matrixEffectTimer = 0;
-    ch.matrixEffectSeeds = matrixEffectSeeds();
+    startMatrixEffect(ch, 'despawn');
     ch.bubbleType = null;
   }
 
@@ -542,9 +538,7 @@ export class OfficeState {
     if (parentCh) ch.dir = parentCh.dir;
     ch.isSubagent = true;
     ch.parentAgentId = parentAgentId;
-    ch.matrixEffect = 'spawn';
-    ch.matrixEffectTimer = 0;
-    ch.matrixEffectSeeds = matrixEffectSeeds();
+    startMatrixEffect(ch, 'spawn');
     this.characters.set(id, ch);
 
     this.subagentIdMap.set(key, id);
@@ -571,9 +565,7 @@ export class OfficeState {
         if (seat) seat.assigned = false;
       }
       // Start despawn animation — keep character in map for rendering
-      ch.matrixEffect = 'despawn';
-      ch.matrixEffectTimer = 0;
-      ch.matrixEffectSeeds = matrixEffectSeeds();
+      startMatrixEffect(ch, 'despawn');
       ch.bubbleType = null;
     }
     // Clean up tracking maps immediately so keys don't collide
@@ -602,9 +594,7 @@ export class OfficeState {
             if (seat) seat.assigned = false;
           }
           // Start despawn animation
-          ch.matrixEffect = 'despawn';
-          ch.matrixEffectTimer = 0;
-          ch.matrixEffectSeeds = matrixEffectSeeds();
+          startMatrixEffect(ch, 'despawn');
           ch.bubbleType = null;
         }
         this.subagentMeta.delete(id);

@@ -32,7 +32,16 @@ function generateSeeds(): number[] {
   return seeds;
 }
 
-export { generateSeeds as matrixEffectSeeds };
+/**
+ * Arm a character's spawn/despawn sweep. The three fields move together —
+ * a stale timer or a leftover seed array from the previous effect makes the
+ * sweep start mid-animation — so they are set in one place.
+ */
+export function startMatrixEffect(ch: Character, mode: 'spawn' | 'despawn'): void {
+  ch.matrixEffect = mode;
+  ch.matrixEffectTimer = 0;
+  ch.matrixEffectSeeds = generateSeeds();
+}
 
 /**
  * Render a character with a Matrix-style digital rain spawn/despawn effect.
@@ -61,7 +70,7 @@ export function renderMatrixEffect(
 
   for (let col = 0; col < spriteCols; col++) {
     // Stagger: each column starts at a slightly different time. Seeds are
-    // generated at MATRIX_SPRITE_COLS length (see matrixEffectSeeds() below);
+    // generated at MATRIX_SPRITE_COLS length (see generateSeeds() above);
     // wrap around for sprites wider than that instead of defaulting the
     // extra columns to zero stagger (which would sweep them with no offset).
     const stagger =
