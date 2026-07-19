@@ -13,7 +13,6 @@
  * agent IDs and seat mappings.
  */
 
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -22,6 +21,7 @@ import type { PersistedAgent } from '../../core/src/schemas.js';
 import type { AdapterSettingKey, AdapterSettings, ConfigNamespace } from './configPersistence.js';
 import { ADAPTER_SETTING_KEYS, readConfig, writeConfig } from './configPersistence.js';
 import { LAYOUT_FILE_DIR } from './constants.js';
+import { readJson, writeJsonAtomic } from './jsonFile.js';
 
 const ADAPTER_SETTING_KEY_SET: ReadonlySet<string> = new Set(ADAPTER_SETTING_KEYS);
 
@@ -35,8 +35,6 @@ interface AdapterState {
   agents: PersistedAgent[];
   seats: Record<string, { palette?: number; hueShift?: number; seatId?: string }>;
 }
-
-const EMPTY_STATE: AdapterState = { agents: [], seats: {} };
 
 export interface FileStateAdapterOptions {
   namespace: ConfigNamespace;
@@ -98,38 +96,18 @@ export class FileStateAdapter implements StateAdapter {
   // ── Internal state-file I/O ─────────────────────────────────
 
   private readState(): AdapterState {
-    try {
-      if (!fs.existsSync(this.stateFilePath)) {
-        return { agents: [], seats: {} };
-      }
-      const raw = fs.readFileSync(this.stateFilePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<AdapterState>;
-      return {
-        agents: Array.isArray(parsed.agents) ? (parsed.agents as PersistedAgent[]) : [],
-        seats:
-          parsed.seats && typeof parsed.seats === 'object'
-            ? (parsed.seats as AdapterState['seats'])
-            : {},
-      };
-    } catch (err) {
-      console.error('[Pixel Agents] Failed to read adapter state:', err);
-      return { ...EMPTY_STATE };
-    }
+    const parsed = readJson(this.stateFilePath, 'adapter state') as Partial<AdapterState> | null;
+    return {
+      agents: Array.isArray(parsed?.agents) ? (parsed.agents as PersistedAgent[]) : [],
+      seats:
+        parsed?.seats && typeof parsed.seats === 'object'
+          ? (parsed.seats as AdapterState['seats'])
+          : {},
+    };
   }
 
   private writeState(state: AdapterState): void {
-    const dir = path.dirname(this.stateFilePath);
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const json = JSON.stringify(state, null, 2);
-      const tmpPath = this.stateFilePath + '.tmp';
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-      fs.renameSync(tmpPath, this.stateFilePath);
-    } catch (err) {
-      console.error('[Pixel Agents] Failed to write adapter state:', err);
-    }
+    writeJsonAtomic(this.stateFilePath, state);
   }
 }
 

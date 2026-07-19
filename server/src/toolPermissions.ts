@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
-import * as fs from 'fs';
 import * as path from 'path';
+
+import { readJson, writeJsonAtomic } from './jsonFile.js';
 
 /**
  * Tool permission allowlist — one per employee, stored in ~/.pixel-agents/tool-permissions.json
@@ -85,43 +86,23 @@ const BASH_DANGER_CHARS = [';', '&&', '||', '|', '&', '`', '$(', '>', '>>', '<',
  * Fail-closed: missing file = automode disabled for that employee.
  */
 export function loadToolPermissions(): ToolPermissionsData {
-  try {
-    if (!fs.existsSync(PERMISSIONS_FILE)) {
-      return { version: 1, byEmployee: {} };
-    }
-    const content = fs.readFileSync(PERMISSIONS_FILE, 'utf-8');
-    const data = JSON.parse(content);
-    // Validate basic structure. The null check is not redundant: typeof null is
-    // 'object', so a file holding "byEmployee": null would pass a bare typeof
-    // test and then throw on the first property read — a crash, which is the one
-    // thing a fail-closed loader must never do.
-    if (data.version !== 1 || !data.byEmployee || typeof data.byEmployee !== 'object') {
-      console.warn('[toolPermissions] Invalid structure, resetting');
-      return { version: 1, byEmployee: {} };
-    }
-    return data;
-  } catch (e) {
-    console.warn('[toolPermissions] Failed to load:', e instanceof Error ? e.message : String(e));
+  const data = readJson(PERMISSIONS_FILE, 'tool permissions') as ToolPermissionsData | null;
+  // Validate basic structure. The null check is not redundant: typeof null is
+  // 'object', so a file holding "byEmployee": null would pass a bare typeof
+  // test and then throw on the first property read — a crash, which is the one
+  // thing a fail-closed loader must never do.
+  if (!data || data.version !== 1 || !data.byEmployee || typeof data.byEmployee !== 'object') {
+    if (data) console.warn('[toolPermissions] Invalid structure, resetting');
     return { version: 1, byEmployee: {} };
   }
+  return data;
 }
 
 /**
  * Save tool permissions to disk. Must be atomic to prevent corruption.
  */
 export function saveToolPermissions(data: ToolPermissionsData): void {
-  try {
-    const dir = path.dirname(PERMISSIONS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    // Write to temp file first, then rename (atomic)
-    const tempFile = PERMISSIONS_FILE + '.tmp';
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tempFile, PERMISSIONS_FILE);
-  } catch (e) {
-    console.error('[toolPermissions] Failed to save:', e instanceof Error ? e.message : String(e));
-  }
+  writeJsonAtomic(PERMISSIONS_FILE, data);
 }
 
 /**

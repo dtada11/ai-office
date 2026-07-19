@@ -4,13 +4,13 @@
  * Conversations are NOT restored — each start is a fresh session.
  */
 
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 import type { EmployeeProvider } from '../../core/src/messages.js';
 import { normalizeProvider } from './aiProvider.js';
 import { LAYOUT_FILE_DIR } from './constants.js';
+import { readJson, writeJsonAtomic } from './jsonFile.js';
 
 function getRosterPath(): string {
   return path.join(os.homedir(), LAYOUT_FILE_DIR, 'employees.json');
@@ -57,30 +57,17 @@ function normalizeRole(raw: unknown): 'lead' | 'staff' {
 }
 
 export function readEmployees(): SavedEmployee[] {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(getRosterPath(), 'utf8')) as {
-      employees?: SavedEmployee[];
-    };
-    return (parsed.employees ?? []).map((e) => ({
-      ...e,
-      role: normalizeRole(e.role),
-      provider: normalizeProvider(e.provider),
-    }));
-  } catch {
-    return [];
-  }
+  const parsed = readJson(getRosterPath(), 'staff roster') as {
+    employees?: SavedEmployee[];
+  } | null;
+  return (parsed?.employees ?? []).map((e) => ({
+    ...e,
+    role: normalizeRole(e.role),
+    provider: normalizeProvider(e.provider),
+  }));
 }
 
 export function writeEmployees(employees: SavedEmployee[]): void {
-  try {
-    const rosterPath = getRosterPath();
-    fs.mkdirSync(path.dirname(rosterPath), { recursive: true });
-    // The roster can now hold an employee's own key, so keep it owner-readable.
-    fs.writeFileSync(rosterPath, JSON.stringify({ employees }, null, 2) + '\n', {
-      encoding: 'utf8',
-      mode: 0o600,
-    });
-  } catch (err) {
-    console.warn('[Pixel Agents] failed to save the staff roster:', err);
-  }
+  // The roster can hold an employee's own key, so keep it owner-readable.
+  writeJsonAtomic(getRosterPath(), { employees }, { mode: 0o600 });
 }

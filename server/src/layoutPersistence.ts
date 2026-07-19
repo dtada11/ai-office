@@ -8,6 +8,7 @@ import {
   LAYOUT_FILE_POLL_INTERVAL_MS,
   LAYOUT_REVISION_KEY,
 } from './constants.js';
+import { readJson, writeJsonAtomic } from './jsonFile.js';
 
 export interface LayoutWatcher {
   markOwnWrite(): void;
@@ -19,15 +20,7 @@ function getLayoutFilePath(): string {
 }
 
 export function readLayoutFromFile(): Record<string, unknown> | null {
-  const filePath = getLayoutFilePath();
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch (err) {
-    console.error('[Pixel Agents] Failed to read layout file:', err);
-    return null;
-  }
+  return readJson(getLayoutFilePath(), 'layout file') as Record<string, unknown> | null;
 }
 
 /** Persist the layout. Returns true on success, false if the write failed
@@ -36,21 +29,7 @@ export function readLayoutFromFile(): Record<string, unknown> | null {
  *  the save didn't stick, instead of the user believing a lost layout was kept
  *  and finding it rolled back on restart. */
 export function writeLayoutToFile(layout: Record<string, unknown>): boolean {
-  const filePath = getLayoutFilePath();
-  const dir = path.dirname(filePath);
-  try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const json = JSON.stringify(layout, null, 2);
-    const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, json, 'utf-8');
-    fs.renameSync(tmpPath, filePath);
-    return true;
-  } catch (err) {
-    console.error('[Pixel Agents] Failed to write layout file:', err);
-    return false;
-  }
+  return writeJsonAtomic(getLayoutFilePath(), layout);
 }
 
 interface LayoutLoadResult {

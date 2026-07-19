@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 import { CONFIG_FILE_NAME, LAYOUT_FILE_DIR } from './constants.js';
+import { readJson, writeJsonAtomic } from './jsonFile.js';
 
 export interface AdapterSettings {
   soundEnabled: boolean;
@@ -86,46 +86,16 @@ function parseAdapterSettings(raw: unknown): AdapterSettings {
 }
 
 export function readConfig(): PixelAgentsConfig {
-  const filePath = getConfigFilePath();
-  try {
-    if (!fs.existsSync(filePath)) {
-      return {
-        vscode: { ...DEFAULT_ADAPTER_SETTINGS },
-        standalone: { ...DEFAULT_ADAPTER_SETTINGS },
-        externalAssetDirectories: [],
-      };
-    }
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<PixelAgentsConfig>;
-    return {
-      vscode: parseAdapterSettings(parsed.vscode),
-      standalone: parseAdapterSettings(parsed.standalone),
-      externalAssetDirectories: Array.isArray(parsed.externalAssetDirectories)
-        ? parsed.externalAssetDirectories.filter((d): d is string => typeof d === 'string')
-        : [],
-    };
-  } catch (err) {
-    console.error('[Pixel Agents] Failed to read config file:', err);
-    return {
-      vscode: { ...DEFAULT_ADAPTER_SETTINGS },
-      standalone: { ...DEFAULT_ADAPTER_SETTINGS },
-      externalAssetDirectories: [],
-    };
-  }
+  const parsed = readJson(getConfigFilePath(), 'config file') as Partial<PixelAgentsConfig> | null;
+  return {
+    vscode: parseAdapterSettings(parsed?.vscode),
+    standalone: parseAdapterSettings(parsed?.standalone),
+    externalAssetDirectories: Array.isArray(parsed?.externalAssetDirectories)
+      ? parsed.externalAssetDirectories.filter((d): d is string => typeof d === 'string')
+      : [],
+  };
 }
 
 export function writeConfig(config: PixelAgentsConfig): void {
-  const filePath = getConfigFilePath();
-  const dir = path.dirname(filePath);
-  try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const json = JSON.stringify(config, null, 2);
-    const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, json, 'utf-8');
-    fs.renameSync(tmpPath, filePath);
-  } catch (err) {
-    console.error('[Pixel Agents] Failed to write config file:', err);
-  }
+  writeJsonAtomic(getConfigFilePath(), config);
 }
