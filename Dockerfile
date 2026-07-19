@@ -20,7 +20,7 @@ RUN npm ci
 COPY . .
 
 # 컴파일: esbuild + webview 빌드
-# npm run compile = asyncapi generate + typecheck + lint + esbuild + webview build
+# npm run compile = typecheck + lint + esbuild + webview build
 RUN npm run compile
 
 # ──────────────────────────────────────────────────────────────
