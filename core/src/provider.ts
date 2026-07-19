@@ -68,10 +68,6 @@ export interface HookProvider {
   readonly kind: 'hook';
   readonly id: string;
   readonly displayName: string;
-  /** Protocol version. Server refuses to dispatch events from a provider whose
-   *  version it doesn't understand. Bump on every breaking change to AgentEvent
-   *  / TeamProvider / HookProvider. Start at 1. */
-  readonly protocolVersion: number;
 
   /** Normalize a raw hook event payload into an AgentEvent.
    *  Each CLI sends different JSON (Claude: snake_case, Copilot: camelCase, etc.)

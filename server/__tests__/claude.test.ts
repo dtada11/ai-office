@@ -23,9 +23,6 @@ describe('claudeProvider', () => {
       }
       expect(claudeProvider.readingTools.has('Edit')).toBe(false);
     });
-    it('has protocolVersion 1', () => {
-      expect(claudeProvider.protocolVersion).toBe(1);
-    });
     it('has a linked TeamProvider', () => {
       expect(claudeProvider.team).toBeDefined();
       expect(claudeProvider.team?.providerId).toBe('claude');

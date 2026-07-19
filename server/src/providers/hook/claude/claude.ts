@@ -260,7 +260,6 @@ export const claudeProvider: HookProvider = {
   kind: 'hook',
   id: 'claude',
   displayName: 'Claude Code',
-  protocolVersion: 1,
 
   normalizeHookEvent,
 
