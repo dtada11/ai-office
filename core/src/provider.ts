@@ -99,21 +99,17 @@ export interface HookProvider {
    *  match VS Code terminals to agents for heuristic adoption. */
   readonly terminalNamePrefix?: string;
 
-  // ── Optional file fallback (heuristic mode) ──
+  // ── File fallback (heuristic mode) ──
 
-  /** Session directories to scan. Undefined = no file fallback. */
-  getSessionDirs?(workspacePath: string): string[];
+  /** Session directories to scan. */
+  getSessionDirs(workspacePath: string): string[];
   /** Root directories containing every session this provider may have started
    *  (across all workspaces). Used by global session discovery / "Watch All
    *  Sessions". Each returned dir contains subdirs whose entries are session
-   *  transcript files. Undefined = this provider doesn't support global scan. */
-  getAllSessionRoots?(): string[];
-  /** Glob pattern for session files (e.g., '*.jsonl'). */
-  readonly sessionFilePattern?: string;
-  /** Parse one line of a transcript file into an AgentEvent. */
-  parseTranscriptLine?(line: string): AgentEvent | null;
+   *  transcript files. */
+  getAllSessionRoots(): string[];
   /** Build CLI launch command for +Agent button. */
-  buildLaunchCommand?(
+  buildLaunchCommand(
     sessionId: string,
     cwd: string,
     opts?: { bypassPermissions?: boolean },

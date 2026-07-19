@@ -23,7 +23,7 @@ export function getProjectDirPath(cwd?: string): string {
   // when VS Code is launched without a folder). The provider's getSessionDirs already
   // implements the Windows case-insensitive fallback for drive-letter casing.
   const workspacePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.homedir();
-  const dirs = claudeProvider.getSessionDirs?.(workspacePath) ?? [];
+  const dirs = claudeProvider.getSessionDirs(workspacePath);
   if (dirs.length === 0) {
     throw new Error('claudeProvider.getSessionDirs returned no directories');
   }
@@ -69,10 +69,7 @@ export async function launchNewTerminal(
   }
 
   const sessionId = crypto.randomUUID();
-  const launch = claudeProvider.buildLaunchCommand?.(sessionId, cwd, { bypassPermissions });
-  if (!launch) {
-    throw new Error('claudeProvider.buildLaunchCommand is not implemented');
-  }
+  const launch = claudeProvider.buildLaunchCommand(sessionId, cwd, { bypassPermissions });
   terminal.sendText([launch.command, ...launch.args].join(' '));
 
   const projectDir = getProjectDirPath(cwd);

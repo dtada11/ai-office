@@ -1139,7 +1139,7 @@ function scanGlobalProjectDirs(
 
   persistAgents: () => void,
 ): void {
-  const roots = hookProvider?.getAllSessionRoots?.() ?? [];
+  const roots = hookProvider?.getAllSessionRoots() ?? [];
   if (roots.length === 0) return;
 
   const projectDirs: string[] = [];

@@ -281,7 +281,6 @@ export const claudeProvider: HookProvider = {
 
   getSessionDirs,
   getAllSessionRoots,
-  sessionFilePattern: '*.jsonl',
   buildLaunchCommand,
 
   team: claudeTeamProvider,
