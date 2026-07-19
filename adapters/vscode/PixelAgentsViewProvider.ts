@@ -23,11 +23,6 @@ import {
   mergeCharacterSprites,
   mergeLoadedAssets,
   mergePetSprites,
-  sendAssetsToWebview,
-  sendCharacterSpritesToWebview,
-  sendFloorTilesToWebview,
-  sendPetSpritesToWebview,
-  sendWallTilesToWebview,
 } from '../../server/src/assetLoader.js';
 import { readConfig, writeConfig } from '../../server/src/configPersistence.js';
 import { setTerminalAdapter } from '../../server/src/fileWatcher.js';
@@ -59,6 +54,13 @@ import {
   LAYOUT_REVISION_KEY,
 } from './constants.js';
 import { VscodeTerminalAdapter } from './vscodeTerminalAdapter.js';
+import {
+  sendAssetsToWebview,
+  sendCharacterSpritesToWebview,
+  sendFloorTilesToWebview,
+  sendPetSpritesToWebview,
+  sendWallTilesToWebview,
+} from './webviewAssetSender.js';
 
 /** Cap on the pending-broadcast queue. If we exceed this, something has gone
  *  wrong (webviewReady never arriving) — log and drop the oldest. */

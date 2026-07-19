@@ -7,7 +7,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type * as vscode from 'vscode';
 
 import {
   CHAR_COUNT,
@@ -252,7 +251,7 @@ export function loadDefaultLayout(assetsRoot: string): Record<string, unknown> |
 
 // ── Wall tile loading ────────────────────────────────────────
 
-interface LoadedWallTiles {
+export interface LoadedWallTiles {
   /** Array of wall sets, each containing 16 sprites indexed by bitmask (N=1,E=2,S=4,W=8) */
   sets: string[][][][];
 }
@@ -309,18 +308,7 @@ export async function loadWallTiles(assetsRoot: string): Promise<LoadedWallTiles
   }
 }
 
-/**
- * Send wall tiles to webview
- */
-export function sendWallTilesToWebview(webview: vscode.Webview, wallTiles: LoadedWallTiles): void {
-  webview.postMessage({
-    type: 'wallTilesLoaded',
-    sets: wallTiles.sets,
-  });
-  console.log(`📤 Sent ${wallTiles.sets.length} wall tile set(s) to webview`);
-}
-
-interface LoadedFloorTiles {
+export interface LoadedFloorTiles {
   sprites: string[][][]; // N sprites (one per floor_N.png), each 16x16 SpriteData
 }
 
@@ -372,20 +360,6 @@ export async function loadFloorTiles(assetsRoot: string): Promise<LoadedFloorTil
     );
     return null;
   }
-}
-
-/**
- * Send floor tiles to webview
- */
-export function sendFloorTilesToWebview(
-  webview: vscode.Webview,
-  floorTiles: LoadedFloorTiles,
-): void {
-  webview.postMessage({
-    type: 'floorTilesLoaded',
-    sprites: floorTiles.sprites,
-  });
-  console.log(`📤 Sent ${floorTiles.sprites.length} floor tile patterns to webview`);
 }
 
 // ── Character sprite loading ────────────────────────────────
@@ -498,48 +472,6 @@ export async function loadExternalCharacterSprites(
     );
     return null;
   }
-}
-
-/**
- * Send character sprites to webview
- */
-export function sendCharacterSpritesToWebview(
-  webview: vscode.Webview,
-  charSprites: LoadedCharacterSprites,
-): void {
-  webview.postMessage({
-    type: 'characterSpritesLoaded',
-    characters: charSprites.characters,
-  });
-  console.log(`📤 Sent ${charSprites.characters.length} character sprites to webview`);
-}
-
-/**
- * Send loaded assets to webview
- */
-export function sendAssetsToWebview(webview: vscode.Webview, assets: LoadedAssets): void {
-  if (!assets) {
-    console.log('[AssetLoader] ⚠️  No assets to send');
-    return;
-  }
-
-  console.log('[AssetLoader] Converting sprites Map to object...');
-  // Convert sprites Map to plain object for JSON serialization
-  const spritesObj: Record<string, string[][]> = {};
-  for (const [id, spriteData] of assets.sprites) {
-    spritesObj[id] = spriteData;
-  }
-
-  console.log(
-    `[AssetLoader] Posting furnitureAssetsLoaded message with ${assets.catalog.length} assets`,
-  );
-  webview.postMessage({
-    type: 'furnitureAssetsLoaded',
-    catalog: assets.catalog,
-    sprites: spritesObj,
-  });
-
-  console.log(`📤 Sent ${assets.catalog.length} furniture assets to webview`);
 }
 
 // ── Pet sprite loading ──────────────────────────────────────
@@ -747,23 +679,4 @@ export async function loadExternalPetSprites(
     );
     return null;
   }
-}
-
-/**
- * Send pet sprites to webview.
- *
- * Wire format: parallel arrays `pets[i]` (frame data) and `petNames[i]` (display
- * names from manifest.json). Manifest IDs are dropped — the webview indexes by
- * `petType: number`.
- */
-export function sendPetSpritesToWebview(
-  webview: vscode.Webview,
-  petSprites: LoadedPetSprites,
-): void {
-  webview.postMessage({
-    type: 'petSpritesLoaded',
-    pets: petSprites.pets,
-    petNames: petSprites.manifests.map((m) => m.name),
-  });
-  console.log(`📤 Sent ${petSprites.pets.length} pet sprites to webview`);
 }
