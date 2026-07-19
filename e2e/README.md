@@ -4,7 +4,7 @@ Playwright end-to-end tests for the VS Code extension and the standalone `npx pi
 
 ## What this suite covers
 
-Behavioral overview by area. Each area corresponds to a `test.describe` block in the spec files, an `@area:` tag on each test title, and an Allure `epic` label.
+Behavioral overview by area. Each area corresponds to a `test.describe` block in the spec files and an `@area:` tag on each test title.
 
 ### Spawn paths (`@area:spawn`)
 
@@ -94,9 +94,10 @@ npm run e2e -- --grep "@area:cross-cutting"
 npm run e2e -- --headed                      # watch chromium for standalone test
 
 npm run e2e:inventory                        # regenerate the inventory section below
-npm run test:report                          # build the Allure dashboard from latest run
-npm run test:report:open                     # serve + open the Allure dashboard in a browser
 ```
+
+The run writes a Playwright HTML report to `playwright-report/e2e/`; open its
+`index.html` for pass/fail detail, traces, and videos.
 
 ## Mocking model & rules
 
@@ -119,7 +120,6 @@ When you add a new test:
 
 - Pick a `test.describe` block that matches an existing `@area:` tag, OR add a new area to the "What this suite covers" section above and pick a tag.
 - Add `@area:<tag>` to the test title.
-- Add Allure `epic` / `feature` / `story` labels matching the area.
 - Run `npm run e2e:inventory` and commit the regenerated section.
 
 When you remove a test:
@@ -214,4 +214,4 @@ We do not measure e2e via code coverage (too noisy, doesn't map to user-observab
 
 1. **The inventory section above** — every test in the suite with its area tag and file:line.
 2. **The "What's NOT covered" gap list** — deliberately maintained; closing a gap removes the corresponding row.
-3. **Allure dashboard** — `epic` / `feature` / `story` labels group tests by area without needing this file. Run `npm run test:report` after a suite run, then open `allure-report/allure/index.html` → Behaviors view.
+3. **`--grep "@area:<tag>"`** — the tags group tests by area without needing this file, straight from the runner.

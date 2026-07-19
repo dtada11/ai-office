@@ -6,7 +6,6 @@ import { namespaceE2EPath } from './run-config';
 
 export const VSCODE_CACHE_DIR = path.join(__dirname, '../.vscode-test');
 export const VSCODE_PATH_FILE = path.join(VSCODE_CACHE_DIR, 'vscode-executable.txt');
-export const ALLURE_RESULTS_DIR = namespaceE2EPath(path.join(__dirname, '../allure-results/e2e'));
 const VSCODE_DOWNLOAD_LOCK_DIR = path.join(VSCODE_CACHE_DIR, 'download.lock');
 const VSCODE_DOWNLOAD_LOCK_TIMEOUT_MS = 10 * 60_000;
 const VSCODE_DOWNLOAD_LOCK_POLL_MS = 500;
@@ -133,8 +132,6 @@ function patchProductJsonForWindows(vscodePath: string): void {
 }
 
 export default async function globalSetup(): Promise<void> {
-  fs.rmSync(ALLURE_RESULTS_DIR, { recursive: true, force: true });
-
   let vscodePath = readCachedVSCodePath();
 
   if (!vscodePath) {

@@ -104,9 +104,6 @@
     "e2e": "node scripts/run-e2e.mjs",
     "e2e:debug": "node scripts/run-e2e.mjs --debug",
     "e2e:inventory": "node scripts/generate-e2e-inventory.mjs",
-    "test:report": "node scripts/build-allure-report.mjs",
-    "test:report:open": "allure open allure-report/allure",
-    "e2e:report": "npm run test:report",
     "knip": "knip"
   },
   "devDependencies": {
@@ -118,8 +115,6 @@
     "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.105.0",
     "@vscode/test-electron": "^2.5.2",
-    "allure-commandline": "^2.38.1",
-    "allure-playwright": "^3.7.1",
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.0",

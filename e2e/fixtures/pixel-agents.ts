@@ -3,7 +3,6 @@ import type { Frame, Page, TestInfo } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-import { applyAllureLabels } from '../helpers/allure-labels';
 import { launchVSCode, type VSCodeSession, waitForWorkbench } from '../helpers/launch';
 import { killTrackedExternalProcesses } from '../helpers/mock-claude';
 import { getPixelAgentsFrame, openPixelAgentsPanel } from '../helpers/webview';
@@ -51,17 +50,7 @@ function removeDirIfExists(dirPath: string | undefined): void {
 
 export const test = base.extend<{
   pixelAgents: PixelAgentsContext;
-  _allureLabels: void;
 }>({
-  // Auto-fixture: tag every test with Allure epic + feature derived from its
-  // @area: annotation and enclosing describe path. Runs before pixelAgents.
-  _allureLabels: [
-    async ({}, use, testInfo) => {
-      await applyAllureLabels(testInfo);
-      await use();
-    },
-    { auto: true },
-  ],
   pixelAgents: async ({}, use, testInfo) => {
     const session = await launchVSCode(testInfo.title);
     const { window, tmpHome, workspaceDir, mockLogFile } = session;
@@ -83,9 +72,9 @@ export const test = base.extend<{
     } finally {
       // Only attach debug artifacts (logs, screenshot, video) for failing tests
       // — or when --attach-videos-on-success is set. On a green run these are
-      // pure noise and bloat the hosted Allure report (a per-test screenshot
-      // alone is ~85 KB × 48 tests × 3 platforms). `shouldAttachRunVideo` is the
-      // single shared predicate so all artifacts travel together.
+      // pure noise and bloat the report (a per-test screenshot alone is ~85 KB
+      // × 48 tests × 3 platforms). `shouldAttachRunVideo` is the single shared
+      // predicate so all artifacts travel together.
       const keepArtifacts = shouldAttachRunVideo(testInfo);
 
       if (keepArtifacts) {

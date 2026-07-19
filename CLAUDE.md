@@ -154,7 +154,6 @@ e2e/                                 Playwright suite (real VS Code + mock-claud
     internal-agent.ts                spawnInternalAgentAndWait
     lifecycle.ts                     Reusable scenario fragments
     team.ts                          Team config seeding + teammate helpers
-    allure-labels.ts                 @area:<tag> → Allure epic
   tests/
     claude/hooks-on/                 basic.spec.ts, lifecycle.spec.ts, teams.spec.ts
     claude/hooks-off/                lifecycle.spec.ts, matrix.spec.ts
@@ -165,7 +164,6 @@ scripts/
   generate-messages.ts               AsyncAPI → core/src/messages.ts via Modelina (with CI drift check)
   run-e2e.mjs                        Playwright wrapper (run-id namespacing, video attach flags)
   generate-e2e-inventory.mjs         Splices test list into e2e/README.md (CI drift check)
-  build-allure-report.mjs            Combine e2e+server+webview Allure results
   asset-manager.html                 Unified furniture editor (positions + metadata)
   jsonl-viewer.html                  Standalone JSONL transcript inspector
   wall-tile-editor.html              Wall sprite editor
@@ -497,8 +495,6 @@ Run: `npm run test:webview`.
 
 **Isolation**: each test gets its own `tmpHome`, workspace directory, VS Code `--user-data-dir`, and mock-log file. No state leaks between tests.
 
-**Auto-fixtures**: `_allureLabels` (auto: true) reads `@area:<tag>` from `testInfo.tags` and applies the corresponding Allure epic.
-
 **Single source of truth for test inventory**: `e2e/README.md` contains an auto-generated section spliced between `<!-- BEGIN:E2E-INVENTORY -->` and `<!-- END:E2E-INVENTORY -->` markers. CI regenerates via `npm run e2e:inventory` and fails on `git diff --exit-code e2e/README.md`.
 
 Run:
@@ -510,8 +506,6 @@ npm run e2e -- --grep "lifecycle"              # filter by name
 npm run e2e:debug                              # step-through
 npm run e2e -- --attach-videos-on-success      # keep videos for passes too
 npm run e2e:inventory                          # regen e2e/README.md inventory
-npm run test:report                            # build combined Allure report
-npm run test:report:open                       # serve Allure locally (file:// can't fetch)
 ```
 
 **Reproducing CI failures locally**: CI uses `--workers=1` because the runners can't handle more. Reproduce locally with `npm run e2e -- --workers=1 --grep "<test>"`. For full Linux fidelity, `act -j linux-e2e --matrix shard:1 -P ubuntu-latest=catthehacker/ubuntu:full-22.04 --container-architecture linux/amd64` or run inside `mcr.microsoft.com/playwright:v1.58.2-noble` Docker with `--cpus=2 --memory=4g` to simulate runner throttling.
@@ -605,7 +599,6 @@ Use `console.log`/`error`/`warn` with prefixed context:
 - **External-session adoption**: scanner runs every 3 s. In hooks-OFF mode external scenarios, the test setup can race the first scanner tick. Mock-claude scenarios should give a few seconds of margin before assertions.
 - **Heuristic sub-agent permission bubble timing**: the bubble lands 7 s after the SUB-TOOL is registered, not 7 s after the parent Task tool appears. Tests waiting on it from the "Subtask:" overlay need at least `1 s (Task→Bash gap) + 7 s timer + ~300 ms IPC/render = 9–10 s` budget.
 - **runInBackground sub-character gate**: in webview `agentToolStart`, `runInBackground=true` Agent tools are gated out of sub-character creation when the parent has a `teamName` (teammate path handles it). With no `teamName`, the gate must be bypassed so the basic Subtask sub-character still renders. `addSubagent` dedups via `subagentIdMap`, so the bypass is safe even if a teammate is detected later.
-- **Allure HTML report**: viewing via `file://` fails (browsers block `fetch()` from local files). Use `npx allure open allure-report/allure` or `npm run test:report:open`.
 
 ## Manual Hook Testing
 
