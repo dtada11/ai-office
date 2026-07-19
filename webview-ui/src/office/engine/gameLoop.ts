@@ -1,4 +1,5 @@
-import { MAX_DELTA_TIME_SEC } from '../../constants.js';
+// ── Game Logic ──────────────────────────────────────────────────
+const MAX_DELTA_TIME_SEC = 0.1;
 
 /** @internal */
 export interface GameLoopCallbacks {

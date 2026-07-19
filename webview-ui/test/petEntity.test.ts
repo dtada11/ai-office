@@ -20,11 +20,12 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'vitest';
 
 import {
+  createPet,
   PET_FOLLOW_DURATION_MAX_SEC,
   PET_WALK_FRAME_DURATION_SEC,
   PET_WANDER_PAUSE_MAX_SEC,
-} from '../src/constants.js';
-import { createPet, updatePet } from '../src/office/engine/petEntity.js';
+  updatePet,
+} from '../src/office/engine/petEntity.js';
 import type { Character, TileType as TileTypeVal } from '../src/office/types.js';
 import { CharacterState, Direction, PetState, TileType } from '../src/office/types.js';
 

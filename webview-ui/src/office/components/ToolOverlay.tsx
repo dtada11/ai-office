@@ -8,20 +8,24 @@ import {
   FUEL_COLOR_OK,
   FUEL_COLOR_WARN,
   FUEL_GAUGE_BG,
-  FUEL_GAUGE_HEIGHT_PX,
-  FUEL_GAUGE_WIDTH_PX,
   MAX_CONTEXT_TOKENS,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
   TOKEN_CRITICAL_THRESHOLD,
   TOKEN_DANGER_THRESHOLD,
   TOKEN_WARN_THRESHOLD,
-  TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
 import type { ToolActivity } from '../types.js';
 import { CharacterState, TILE_SIZE } from '../types.js';
+
+// ── Game Logic ──────────────────────────────────────────────────
+const TOOL_OVERLAY_VERTICAL_OFFSET = 32;
+
+// ── Agent Teams ─────────────────────────────────────────────────
+const FUEL_GAUGE_WIDTH_PX = 40;
+const FUEL_GAUGE_HEIGHT_PX = 4;
 
 // Both turn-end states show the green checkmark bubble. A finished turn (Stop)
 // shows ONLY the checkmark (the label falls through to its normal idle text);

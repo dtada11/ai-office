@@ -1,21 +1,23 @@
 import {
-  MATRIX_COLUMN_STAGGER_RANGE,
-  MATRIX_FLICKER_FPS,
-  MATRIX_FLICKER_VISIBILITY_THRESHOLD,
   MATRIX_HEAD_COLOR,
-  MATRIX_SPRITE_COLS,
-  MATRIX_SPRITE_ROWS,
-  MATRIX_TRAIL_DIM_THRESHOLD,
-  MATRIX_TRAIL_EMPTY_ALPHA,
-  MATRIX_TRAIL_LENGTH,
-  MATRIX_TRAIL_MID_THRESHOLD,
-  MATRIX_TRAIL_OVERLAY_ALPHA,
   matrixGreenBright,
   matrixGreenDim,
   matrixGreenMid,
 } from '../../constants.js';
 import type { Character, SpriteData } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
+
+// ── Matrix Effect ───────────────────────────────────────────────
+const MATRIX_TRAIL_LENGTH = 6;
+const MATRIX_SPRITE_COLS = 16;
+const MATRIX_SPRITE_ROWS = 24;
+const MATRIX_FLICKER_FPS = 30;
+const MATRIX_FLICKER_VISIBILITY_THRESHOLD = 180;
+const MATRIX_COLUMN_STAGGER_RANGE = 0.3;
+const MATRIX_TRAIL_OVERLAY_ALPHA = 0.6;
+const MATRIX_TRAIL_EMPTY_ALPHA = 0.5;
+const MATRIX_TRAIL_MID_THRESHOLD = 0.33;
+const MATRIX_TRAIL_DIM_THRESHOLD = 0.66;
 
 /** Hash-based flicker: ~70% visible for shimmer effect */
 function flickerVisible(col: number, row: number, time: number): boolean {

@@ -1,20 +1,4 @@
-import {
-  AUTO_ON_FACING_DEPTH,
-  AUTO_ON_SIDE_DEPTH,
-  CHARACTER_HIT_HALF_WIDTH,
-  CHARACTER_HIT_HEIGHT,
-  CHARACTER_SITTING_OFFSET_PX,
-  DISMISS_BUBBLE_FAST_FADE_SEC,
-  FURNITURE_ANIM_INTERVAL_SEC,
-  HUE_SHIFT_MIN_DEG,
-  HUE_SHIFT_RANGE_DEG,
-  INACTIVE_SEAT_TIMER_MIN_SEC,
-  INACTIVE_SEAT_TIMER_RANGE_SEC,
-  MAX_PET_ID_LENGTH,
-  PET_HIT_HALF_WIDTH,
-  PET_HIT_HEIGHT,
-  WAITING_BUBBLE_DURATION_SEC,
-} from '../../constants.js';
+import { CHARACTER_SITTING_OFFSET_PX } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
 import {
   createDefaultLayout,
@@ -46,6 +30,29 @@ import {
 import { createCharacter, updateCharacter } from './characters.js';
 import { startMatrixEffect } from './matrixEffect.js';
 import { createPet, updatePet } from './petEntity.js';
+
+// ── Furniture Animation ─────────────────────────────────────────
+const FURNITURE_ANIM_INTERVAL_SEC = 0.2;
+
+// ── Game Logic ──────────────────────────────────────────────────
+const WAITING_BUBBLE_DURATION_SEC = 2.0;
+const DISMISS_BUBBLE_FAST_FADE_SEC = 0.3;
+const INACTIVE_SEAT_TIMER_MIN_SEC = 3.0;
+const INACTIVE_SEAT_TIMER_RANGE_SEC = 2.0;
+const HUE_SHIFT_MIN_DEG = 45;
+const HUE_SHIFT_RANGE_DEG = 271;
+const AUTO_ON_FACING_DEPTH = 3;
+const AUTO_ON_SIDE_DEPTH = 2;
+const CHARACTER_HIT_HALF_WIDTH = 8;
+const CHARACTER_HIT_HEIGHT = 24;
+
+// ── Pets ────────────────────────────────────────────────────────
+/** Hit-box half-width (world px) for pet click detection. */
+const PET_HIT_HALF_WIDTH = 8;
+/** Hit-box height (world px) measured upward from the bottom-center anchor. */
+const PET_HIT_HEIGHT = 16;
+/** Maximum string length for a PlacedPet.id (defends against pathologically-long layout entries). */
+const MAX_PET_ID_LENGTH = 128;
 
 export class OfficeState {
   layout: OfficeLayout;

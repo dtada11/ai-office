@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-import {
-  CAMERA_FOLLOW_LERP,
-  CAMERA_FOLLOW_SNAP_THRESHOLD,
-  PAN_MARGIN_FRACTION,
-  ZOOM_MAX,
-  ZOOM_MIN,
-  ZOOM_SCROLL_THRESHOLD,
-} from '../../constants.js';
+import { ZOOM_MAX, ZOOM_MIN } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
 import { transport } from '../../transport/index.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js';
@@ -24,6 +17,14 @@ import { renderFrame } from '../engine/renderer.js';
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
+
+// ── Camera ──────────────────────────────────────────────────────
+const CAMERA_FOLLOW_LERP = 0.1;
+const CAMERA_FOLLOW_SNAP_THRESHOLD = 0.5;
+
+// ── Zoom ────────────────────────────────────────────────────────
+const ZOOM_SCROLL_THRESHOLD = 50;
+const PAN_MARGIN_FRACTION = 0.25;
 
 interface OfficeCanvasProps {
   officeState: OfficeState;

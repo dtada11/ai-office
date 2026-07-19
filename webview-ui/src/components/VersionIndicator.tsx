@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { toMajorMinor } from '../changelogData.ts';
-import { WHATS_NEW_AUTO_CLOSE_MS, WHATS_NEW_FADE_MS } from '../constants.ts';
 import { Button } from './ui/Button.js';
+
+// ── Version Notice ──────────────────────────────────────────────
+const WHATS_NEW_AUTO_CLOSE_MS = 20000;
+const WHATS_NEW_FADE_MS = 1000;
 
 interface VersionIndicatorProps {
   currentVersion: string;

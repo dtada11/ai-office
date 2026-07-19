@@ -1,36 +1,20 @@
 import type { ColorValue } from '../../components/ui/types.js';
 import {
-  BUBBLE_FADE_DURATION_SEC,
-  BUBBLE_SITTING_OFFSET_PX,
-  BUBBLE_VERTICAL_OFFSET_PX,
   BUTTON_ICON_COLOR,
-  BUTTON_ICON_SIZE_FACTOR,
-  BUTTON_LINE_WIDTH_MIN,
-  BUTTON_LINE_WIDTH_ZOOM_FACTOR,
-  BUTTON_MIN_RADIUS,
-  BUTTON_RADIUS_ZOOM_FACTOR,
   CHARACTER_SITTING_OFFSET_PX,
-  CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
   GHOST_BORDER_HOVER_FILL,
   GHOST_BORDER_HOVER_STROKE,
   GHOST_BORDER_STROKE,
   GHOST_INVALID_TINT,
-  GHOST_PREVIEW_SPRITE_ALPHA,
-  GHOST_PREVIEW_TINT_ALPHA,
   GHOST_VALID_TINT,
   GRID_LINE_COLOR,
-  HOVERED_OUTLINE_ALPHA,
-  OUTLINE_Z_SORT_OFFSET,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
   SEAT_BUSY_COLOR,
   SEAT_OWN_COLOR,
-  SELECTED_OUTLINE_ALPHA,
-  SELECTION_DASH_PATTERN,
   SELECTION_HIGHLIGHT_COLOR,
-  VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
@@ -55,6 +39,26 @@ import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.j
 import { getCharacterSprite } from './characters.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { getPetSpriteData } from './petEntity.js';
+
+// ── Rendering ───────────────────────────────────────────────────
+const CHARACTER_Z_SORT_OFFSET = 0.5;
+const OUTLINE_Z_SORT_OFFSET = 0.001;
+const SELECTED_OUTLINE_ALPHA = 1.0;
+const HOVERED_OUTLINE_ALPHA = 0.5;
+const GHOST_PREVIEW_SPRITE_ALPHA = 0.5;
+const GHOST_PREVIEW_TINT_ALPHA = 0.25;
+const SELECTION_DASH_PATTERN: [number, number] = [4, 3];
+const BUTTON_MIN_RADIUS = 6;
+const BUTTON_RADIUS_ZOOM_FACTOR = 3;
+const BUTTON_ICON_SIZE_FACTOR = 0.45;
+const BUTTON_LINE_WIDTH_MIN = 1.5;
+const BUTTON_LINE_WIDTH_ZOOM_FACTOR = 0.5;
+const BUBBLE_FADE_DURATION_SEC = 0.5;
+const BUBBLE_SITTING_OFFSET_PX = 10;
+const BUBBLE_VERTICAL_OFFSET_PX = 24;
+
+// ── Rendering - Overlay Colors (canvas, not CSS) ────────────────
+const VOID_TILE_DASH_PATTERN: [number, number] = [2, 2];
 
 // ── Render functions ────────────────────────────────────────────
 

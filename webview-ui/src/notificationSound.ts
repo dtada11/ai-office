@@ -1,18 +1,20 @@
-import {
-  NOTIFICATION_NOTE_1_HZ,
-  NOTIFICATION_NOTE_1_START_SEC,
-  NOTIFICATION_NOTE_2_HZ,
-  NOTIFICATION_NOTE_2_START_SEC,
-  NOTIFICATION_NOTE_DURATION_SEC,
-  NOTIFICATION_VOLUME,
-  PERMISSION_NOTE_1_HZ,
-  PERMISSION_NOTE_1_START_SEC,
-  PERMISSION_NOTE_2_HZ,
-  PERMISSION_NOTE_2_START_SEC,
-  PERMISSION_NOTE_DURATION_SEC,
-  PERMISSION_VOLUME,
-} from './constants.js';
 import { isE2E } from './runtime.js';
+
+// ── Notification Sound (done: ascending chime) ──────────────────
+const NOTIFICATION_NOTE_1_HZ = 659.25; // E5
+const NOTIFICATION_NOTE_2_HZ = 1318.51; // E6 (octave up)
+const NOTIFICATION_NOTE_1_START_SEC = 0;
+const NOTIFICATION_NOTE_2_START_SEC = 0.1;
+const NOTIFICATION_NOTE_DURATION_SEC = 0.18;
+const NOTIFICATION_VOLUME = 0.14;
+
+// ── Permission Sound (attention: descending double tap) ─────────
+const PERMISSION_NOTE_1_HZ = 880; // A5
+const PERMISSION_NOTE_2_HZ = 659.25; // E5 (down a fourth)
+const PERMISSION_NOTE_1_START_SEC = 0;
+const PERMISSION_NOTE_2_START_SEC = 0.12;
+const PERMISSION_NOTE_DURATION_SEC = 0.15;
+const PERMISSION_VOLUME = 0.12;
 
 let soundEnabled = true;
 let audioCtx: AudioContext | null = null;

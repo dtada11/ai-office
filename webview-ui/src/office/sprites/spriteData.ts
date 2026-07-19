@@ -1,11 +1,14 @@
 import type { ColorValue } from '../../components/ui/types.js';
-import { PALETTE_COUNT } from '../../constants.js';
 import { adjustSprite } from '../colorize.js';
 import type { Direction, SpriteData } from '../types.js';
 import { Direction as Dir } from '../types.js';
 import bubblePermissionData from './bubble-permission.json';
 import bubblePetData from './bubble-pet.json';
 import bubbleWaitingData from './bubble-waiting.json';
+
+// ── Game Logic ──────────────────────────────────────────────────
+/** Default/fallback palette count (bundled characters). Actual count comes from getLoadedCharacterCount(). */
+const PALETTE_COUNT = 6;
 
 // ── Speech Bubble Sprites ───────────────────────────────────────
 

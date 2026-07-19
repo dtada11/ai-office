@@ -1,7 +1,11 @@
 import type { ColorValue } from '../../components/ui/types.js';
-import { DEFAULT_FLOOR_COLOR, DEFAULT_WALL_COLOR, UNDO_STACK_MAX_SIZE } from '../../constants.js';
+import { UNDO_STACK_MAX_SIZE } from '../../constants.js';
 import type { OfficeLayout, TileType as TileTypeVal } from '../types.js';
 import { EditTool, TileType } from '../types.js';
+
+// ── Editor ──────────────────────────────────────────────────────
+const DEFAULT_FLOOR_COLOR: ColorValue = { h: 35, s: 30, b: 15, c: 0 };
+const DEFAULT_WALL_COLOR: ColorValue = { h: 240, s: 25, b: 0, c: 0 };
 
 export class EditorState {
   isEditMode = false;

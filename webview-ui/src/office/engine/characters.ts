@@ -1,19 +1,19 @@
-import {
-  SEAT_REST_MAX_SEC,
-  SEAT_REST_MIN_SEC,
-  TYPE_FRAME_DURATION_SEC,
-  WALK_FRAME_DURATION_SEC,
-  WALK_SPEED_PX_PER_SEC,
-  WANDER_MOVES_BEFORE_REST_MAX,
-  WANDER_MOVES_BEFORE_REST_MIN,
-  WANDER_PAUSE_MAX_SEC,
-  WANDER_PAUSE_MIN_SEC,
-} from '../../constants.js';
 import { findPath } from '../layout/tileMap.js';
 import type { CharacterSprites } from '../sprites/spriteData.js';
 import { isReadingToolName } from '../toolUtils.js';
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
+
+// ── Character Animation ─────────────────────────────────────────
+const WALK_SPEED_PX_PER_SEC = 48;
+const WALK_FRAME_DURATION_SEC = 0.15;
+const TYPE_FRAME_DURATION_SEC = 0.3;
+const WANDER_PAUSE_MIN_SEC = 2.0;
+const WANDER_PAUSE_MAX_SEC = 20.0;
+const WANDER_MOVES_BEFORE_REST_MIN = 3;
+const WANDER_MOVES_BEFORE_REST_MAX = 6;
+const SEAT_REST_MIN_SEC = 120.0;
+const SEAT_REST_MAX_SEC = 240.0;
 
 /** Whether a tool should show the reading animation (vs typing). Taxonomy comes
  *  from the active HookProvider via the `providerCapabilities` message. */

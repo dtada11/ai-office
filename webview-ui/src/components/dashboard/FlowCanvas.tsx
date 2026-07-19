@@ -3,23 +3,29 @@ import { useEffect, useRef } from 'react';
 import {
   FLOW_ACTIVE_BORDER,
   FLOW_ACTIVE_FILL,
-  FLOW_BACK_RGB,
   FLOW_LABEL_COLOR,
   FLOW_LEAD_BORDER,
   FLOW_LEAD_FILL,
-  FLOW_LEAD_FONT,
   FLOW_NODE_BORDER,
   FLOW_NODE_FILL,
-  FLOW_OUT_RGB,
   FLOW_PERM_BORDER,
   FLOW_PERM_FILL,
-  FLOW_STAFF_FONT,
   FLOW_WIRE_COLOR,
   flowRgb,
   flowRgba,
 } from '../../constants.js';
 import type { FlowPacket } from './dashboardModel.js';
 import { easeInOut, layoutFlowNodes, packetProgress } from './dashboardModel.js';
+
+// ── 팀 흐름 캔버스 (대시보드 탭) ───────────────────────────────────────────
+/** RGB triples, not colours: the packet trail builds gradients from them. */
+const FLOW_OUT_RGB = '116, 111, 255';
+const FLOW_BACK_RGB = '137, 209, 133';
+/** Canvas text. The pixel face carries no Hangul (see index.css), so Korean
+ *  labels fall through to the system sans either way — naming it here keeps the
+ *  Latin/digit glyphs consistent with the rest of the UI. */
+const FLOW_LEAD_FONT = '700 13px "FS Pixel Sans", sans-serif';
+const FLOW_STAFF_FONT = '12px "FS Pixel Sans", sans-serif';
 
 /** 팀 흐름 — the lead in the middle, staff on a ring, and a packet crossing the
  *  wire each time work is delegated (배분) or a result is collected (수거).

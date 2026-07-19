@@ -16,11 +16,6 @@ import { test } from 'vitest';
 
 import {
   bringToFront,
-  clampChatPosition,
-  clampChatSize,
-  initialChatPosition,
-} from '../src/components/chatWindowPosition.js';
-import {
   CHAT_HEADER_VISIBLE_PX,
   CHAT_MAX_HEIGHT_RATIO,
   CHAT_MAX_WIDTH_RATIO,
@@ -29,7 +24,10 @@ import {
   CHAT_MIN_WIDTH_PX,
   CHAT_STAGGER_PX,
   CHAT_START_PX,
-} from '../src/constants.js';
+  clampChatPosition,
+  clampChatSize,
+  initialChatPosition,
+} from '../src/components/chatWindowPosition.js';
 
 // ── 1. initialChatPosition ────────────────────────────────────
 

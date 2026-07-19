@@ -1,9 +1,11 @@
 import type { ColorValue } from '../../components/ui/types.js';
-import { DEFAULT_NEUTRAL_COLOR } from '../../constants.js';
 import { getCatalogEntry, getRotatedType, getToggledType } from '../layout/furnitureCatalog.js';
 import { getPlacementBlockedTiles } from '../layout/layoutSerializer.js';
 import type { OfficeLayout, PlacedFurniture, TileType as TileTypeVal } from '../types.js';
 import { MAX_COLS, MAX_ROWS, TileType } from '../types.js';
+
+// ── Editor ──────────────────────────────────────────────────────
+const DEFAULT_NEUTRAL_COLOR: ColorValue = { h: 0, s: 0, b: 0, c: 0 };
 
 /** Paint a single tile with pattern and color. Returns new layout (immutable). */
 export function paintTile(

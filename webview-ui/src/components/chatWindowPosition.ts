@@ -1,17 +1,28 @@
+// ── Employee chat windows ───────────────────────────────────────
+/** Where the first chat window opens (px from the top-left of the office). */
+export const CHAT_START_PX = 40;
+/** Each further window opens this much down-right of the last, so all stay readable. */
+export const CHAT_STAGGER_PX = 40;
+/** Horizontal px of a dragged window that must stay on screen — enough to grab it back. */
+export const CHAT_MIN_VISIBLE_PX = 80;
+/** Vertical px that must stay on screen: the header, which is the drag handle. */
+export const CHAT_HEADER_VISIBLE_PX = 32;
+/** Smallest a resized chat window can shrink to — still room for the header,
+ *  a couple of log lines, and the input row. */
+export const CHAT_MIN_WIDTH_PX = 340;
+export const CHAT_MIN_HEIGHT_PX = 320;
+/** Largest a resized window can grow to, as a fraction of the viewport. Some
+ *  sliver of office stays visible either way — the point of a pixel office is
+ *  seeing who is doing what while you read.
+ *
+ *  Width is the looser of the two because the board window opens three chat
+ *  widths across, and a ceiling below its own default would snap it smaller the
+ *  instant anyone touched a resize handle. */
+export const CHAT_MAX_WIDTH_RATIO = 0.9;
+export const CHAT_MAX_HEIGHT_RATIO = 0.7;
 /** The two rules that keep hand-dragged chat windows usable: a window can never
  *  be thrown off-screen and lost, and the window you touch comes to the front.
  *  Kept as plain functions so both are decidable without a DOM. */
-
-import {
-  CHAT_HEADER_VISIBLE_PX,
-  CHAT_MAX_HEIGHT_RATIO,
-  CHAT_MAX_WIDTH_RATIO,
-  CHAT_MIN_HEIGHT_PX,
-  CHAT_MIN_VISIBLE_PX,
-  CHAT_MIN_WIDTH_PX,
-  CHAT_STAGGER_PX,
-  CHAT_START_PX,
-} from '../constants.js';
 
 export interface ChatPosition {
   x: number;

@@ -1,21 +1,33 @@
-import {
-  PET_FOLLOW_CHANCE,
-  PET_FOLLOW_DURATION_MAX_SEC,
-  PET_FOLLOW_DURATION_MIN_SEC,
-  PET_FOLLOW_RADIUS_TILES,
-  PET_FOLLOW_RECALC_INTERVAL_SEC,
-  PET_IDLE_FRAME_DURATION_SEC,
-  PET_IDLE_SEQUENCE,
-  PET_WALK_FRAME_DURATION_SEC,
-  PET_WALK_SEQUENCE,
-  PET_WALK_SPEED_PX_PER_SEC,
-  PET_WANDER_PAUSE_MAX_SEC,
-  PET_WANDER_PAUSE_MIN_SEC,
-} from '../../constants.js';
 import { findPath, isWalkable } from '../layout/tileMap.js';
 import type { PetSpriteFrames } from '../sprites/petSpriteData.js';
 import type { Character, Pet, SpriteData, TileType as TileTypeVal } from '../types.js';
 import { Direction, PetState, TILE_SIZE } from '../types.js';
+
+// ── Pets ────────────────────────────────────────────────────────
+/** Walking speed in world pixels per second (matches character walk speed visually but slower). */
+const PET_WALK_SPEED_PX_PER_SEC = 32;
+/** Time per WALK animation cycle step (4 cycle steps × 0.15s = 0.6s per loop). */
+export const PET_WALK_FRAME_DURATION_SEC = 0.15;
+/** Time per IDLE animation cycle step (4 cycle steps × 0.3s = 1.2s per loop). */
+export const PET_IDLE_FRAME_DURATION_SEC = 0.3;
+/** Walk cycle: 4-step lookup into the 3-frame walkDown/walkUp/walkRight arrays. */
+const PET_WALK_SEQUENCE = [0, 1, 0, 2] as const;
+/** Idle cycle: 4-step lookup into the 3-frame idleDown/idleUp arrays. */
+const PET_IDLE_SEQUENCE = [0, 1, 2, 1] as const;
+/** Minimum seconds the pet stays in IDLE before making a new decision. */
+export const PET_WANDER_PAUSE_MIN_SEC = 3.0;
+/** Maximum seconds the pet stays in IDLE before making a new decision. */
+export const PET_WANDER_PAUSE_MAX_SEC = 15.0;
+/** Seconds between FOLLOW path re-computations. */
+const PET_FOLLOW_RECALC_INTERVAL_SEC = 1.0;
+/** Probability that a pet enters FOLLOW (instead of WALK) when wanderTimer expires. */
+export const PET_FOLLOW_CHANCE = 0.3;
+/** Maximum Manhattan distance (tiles) at which a character can become a follow target. */
+export const PET_FOLLOW_RADIUS_TILES = 3;
+/** Minimum seconds a FOLLOW episode lasts before timing out. */
+const PET_FOLLOW_DURATION_MIN_SEC = 5.0;
+/** Maximum seconds a FOLLOW episode lasts before timing out. */
+export const PET_FOLLOW_DURATION_MAX_SEC = 15.0;
 
 /** Inclusive-min / exclusive-max random float */
 function randomRange(min: number, max: number): number {

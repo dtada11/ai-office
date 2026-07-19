@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  ZOOM_LEVEL_FADE_DELAY_MS,
-  ZOOM_LEVEL_FADE_DURATION_SEC,
-  ZOOM_LEVEL_HIDE_DELAY_MS,
-  ZOOM_MAX,
-  ZOOM_MIN,
-} from '../constants.js';
+import { ZOOM_MAX, ZOOM_MIN } from '../constants.js';
 import { Button } from './ui/Button.js';
+
+// ── Zoom ────────────────────────────────────────────────────────
+const ZOOM_LEVEL_FADE_DELAY_MS = 1500;
+const ZOOM_LEVEL_HIDE_DELAY_MS = 2000;
+const ZOOM_LEVEL_FADE_DURATION_SEC = 0.5;
 
 interface ZoomControlsProps {
   zoom: number;

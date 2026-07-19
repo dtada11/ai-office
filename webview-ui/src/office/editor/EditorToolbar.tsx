@@ -4,12 +4,7 @@ import { Button } from '../../components/ui/Button.js';
 import { ColorPicker } from '../../components/ui/ColorPicker.js';
 import { ItemSelect } from '../../components/ui/ItemSelect.js';
 import type { ColorValue } from '../../components/ui/types.js';
-import {
-  CANVAS_FALLBACK_TILE_COLOR,
-  EMPTY_SPRITE_THUMBNAIL_BG,
-  PET_THUMB_SCALE_MARGIN,
-  PET_THUMB_ZOOM,
-} from '../../constants.js';
+import { CANVAS_FALLBACK_TILE_COLOR, EMPTY_SPRITE_THUMBNAIL_BG } from '../../constants.js';
 import { getColorizedSprite } from '../colorize.js';
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js';
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js';
@@ -23,6 +18,12 @@ import { getCachedSprite } from '../sprites/spriteCache.js';
 import type { TileType as TileTypeVal } from '../types.js';
 import { EditTool } from '../types.js';
 import { getWallSetCount, getWallSetPreviewSprite } from '../wallTiles.js';
+
+// ── Pets ────────────────────────────────────────────────────────
+/** Zoom factor used to draw pet thumbnails in the EditorToolbar Pets tab. */
+const PET_THUMB_ZOOM = 2;
+/** Scale margin so the pet thumbnail fills the ItemSelect cell without touching the edges. */
+const PET_THUMB_SCALE_MARGIN = 0.85;
 
 interface EditorToolbarProps {
   activeTool: EditTool;
