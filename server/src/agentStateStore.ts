@@ -37,6 +37,56 @@ export interface StoreEvents {
   broadcast: (message: Record<string, unknown>) => void;
 }
 
+/** What a caller must know about the agent it is creating. Everything else has
+ *  a resting value, so a new spawn path only states what makes it different. */
+type AgentStateSeed = Pick<
+  AgentState,
+  'id' | 'sessionId' | 'isExternal' | 'projectDir' | 'jsonlFile'
+> &
+  Partial<AgentState>;
+
+/**
+ * Build a fresh AgentState.
+ *
+ * Eight spawn paths (terminal launch, project scan, teammate discovery, hook
+ * adoption, external scan, restore-on-start, employee hire, VS Code restore)
+ * each used to write this object out by hand, which meant every new field had
+ * to be added in eight places and a miss left one path's agents holding
+ * undefined. The resting values live here now; callers state only their own
+ * identity and whatever they genuinely differ on.
+ *
+ * The three defaults worth naming, because some callers do override them:
+ * `fileOffset: 0` starts a reader at the top of the transcript; `lastDataAt: 0`
+ * means nothing has arrived yet (paths adopting a live session pass Date.now()
+ * so the staleness check doesn't fire immediately); `hookDelivered: false`
+ * leaves the heuristic timers armed (hooks-only agents pass true to disarm them).
+ *
+ * Every collection is constructed per call — a shared Set or Map here would let
+ * one agent's active tools show up on every other agent.
+ */
+export function newAgentState(seed: AgentStateSeed): AgentState {
+  return {
+    fileOffset: 0,
+    lastDataAt: 0,
+    hookDelivered: false,
+    lineBuffer: '',
+    activeToolIds: new Set(),
+    activeToolStatuses: new Map(),
+    activeToolNames: new Map(),
+    activeSubagentToolIds: new Map(),
+    activeSubagentToolNames: new Map(),
+    backgroundAgentToolIds: new Set(),
+    isWaiting: false,
+    permissionSent: false,
+    hadToolsInTurn: false,
+    linesProcessed: 0,
+    seenUnknownRecordTypes: new Set(),
+    inputTokens: 0,
+    outputTokens: 0,
+    ...seed,
+  };
+}
+
 /**
  * Centralized owner of the agents Map. Wraps a private Map<number, AgentState>
  * and exposes Map-compatible read/write methods. Emits typed events on

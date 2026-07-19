@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
-import type { AgentStateStore } from './agentStateStore.js';
+import { type AgentStateStore, newAgentState } from './agentStateStore.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
@@ -346,37 +346,20 @@ export class AgentRuntime {
         continue;
       }
 
-      const agent: AgentState = {
+      const agent = newAgentState({
         id: p.id,
         sessionId: p.sessionId || path.basename(p.jsonlFile, '.jsonl'),
         terminalRef: undefined,
         isExternal: true,
         projectDir: p.projectDir,
         jsonlFile: p.jsonlFile,
-        fileOffset: 0,
-        lineBuffer: '',
-        activeToolIds: new Set(),
-        activeToolStatuses: new Map(),
-        activeToolNames: new Map(),
-        activeSubagentToolIds: new Map(),
-        activeSubagentToolNames: new Map(),
-        backgroundAgentToolIds: new Set(),
-        isWaiting: false,
-        permissionSent: false,
-        hadToolsInTurn: false,
-        lastDataAt: 0,
-        linesProcessed: 0,
-        seenUnknownRecordTypes: new Set(),
         folderName: p.folderName,
-        hookDelivered: false,
-        inputTokens: 0,
-        outputTokens: 0,
         teamName: p.teamName,
         agentName: p.agentName,
         isTeamLead: p.isTeamLead,
         leadAgentId: p.leadAgentId,
         teamUsesTmux: p.teamUsesTmux,
-      };
+      });
 
       this.store.set(p.id, agent);
       this.knownJsonlFiles.add(p.jsonlFile);

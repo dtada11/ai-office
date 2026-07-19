@@ -28,7 +28,7 @@ const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
 import type { HookProvider } from '../../core/src/provider.js';
 import type { TeamProvider } from '../../core/src/teamProvider.js';
 import type { ITerminalAdapter } from '../../core/src/terminalAdapter.js';
-import type { AgentStateStore } from './agentStateStore.js';
+import { type AgentStateStore, newAgentState } from './agentStateStore.js';
 import {
   CLEAR_IDLE_THRESHOLD_MS,
   EXTERNAL_ACTIVE_THRESHOLD_MS,
@@ -497,7 +497,7 @@ function adoptTerminalForFile(
   } catch {
     /* start from beginning if stat fails */
   }
-  const agent: AgentState = {
+  const agent = newAgentState({
     id,
     sessionId,
     terminalRef: terminal,
@@ -505,23 +505,7 @@ function adoptTerminalForFile(
     projectDir,
     jsonlFile,
     fileOffset,
-    lineBuffer: '',
-    activeToolIds: new Set(),
-    activeToolStatuses: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    backgroundAgentToolIds: new Set(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    lastDataAt: 0,
-    linesProcessed: 0,
-    seenUnknownRecordTypes: new Set(),
-    hookDelivered: false,
-    inputTokens: 0,
-    outputTokens: 0,
-  };
+  });
 
   agents.set(id, agent);
   activeAgentIdRef.current = id;
@@ -660,39 +644,23 @@ export function scanForTeammateFiles(
 
     const id = nextAgentIdRef.current++;
     // Read from start -- teammate JSONL is usually small and we want full tool history
-    const agent: AgentState = {
+    // hookDelivered stays at its default false: teammates need JSONL-based tool
+    // tracking (agentToolStart messages). Permission events are routed from the
+    // lead's hooks via handlePermissionRequest forwarding.
+    const agent = newAgentState({
       id,
       sessionId,
       terminalRef: undefined,
       isExternal: true,
       projectDir,
       jsonlFile: file,
-      fileOffset: 0,
-      lineBuffer: '',
-      activeToolIds: new Set(),
-      activeToolStatuses: new Map(),
-      activeToolNames: new Map(),
-      activeSubagentToolIds: new Map(),
-      activeSubagentToolNames: new Map(),
-      backgroundAgentToolIds: new Set(),
-      isWaiting: false,
-      permissionSent: false,
-      hadToolsInTurn: false,
-      // Keep hookDelivered false: teammates need JSONL-based tool tracking
-      // (agentToolStart messages). Permission events are routed from the lead's
-      // hooks via handlePermissionRequest forwarding.
-      hookDelivered: false,
       lastDataAt: Date.now(),
-      linesProcessed: 0,
-      seenUnknownRecordTypes: new Set(),
-      inputTokens: 0,
-      outputTokens: 0,
       // Agent Teams fields
       agentName: teammateName,
       leadAgentId: parentAgentId,
       teamName: parentAgent?.teamName,
       teamUsesTmux: parentAgent?.teamUsesTmux,
-    };
+    });
 
     agents.set(id, agent);
     persistAgents();
@@ -864,33 +832,20 @@ export function adoptExternalSessionFromHook(
     // Hooks-only provider (OpenCode, Copilot): no transcript file, all state from hooks
     const id = nextAgentIdRef.current++;
     const folderName = cwd ? path.basename(cwd) : undefined;
-    const agent: AgentState = {
+    const agent = newAgentState({
       id,
       sessionId,
       terminalRef: undefined,
       isExternal: true,
       projectDir: cwd,
       jsonlFile: '',
-      fileOffset: 0,
-      lineBuffer: '',
-      activeToolIds: new Set(),
-      activeToolStatuses: new Map(),
-      activeToolNames: new Map(),
-      activeSubagentToolIds: new Map(),
-      activeSubagentToolNames: new Map(),
-      backgroundAgentToolIds: new Set(),
-      isWaiting: false,
-      permissionSent: false,
-      hadToolsInTurn: false,
+      // No transcript to read: every bit of state arrives over hooks, so the
+      // JSONL-based heuristics stay disarmed.
       hookDelivered: true,
       hooksOnly: true,
       lastDataAt: Date.now(),
-      linesProcessed: 0,
-      seenUnknownRecordTypes: new Set(),
       folderName,
-      inputTokens: 0,
-      outputTokens: 0,
-    };
+    });
     agents.set(id, agent);
     persistAgents();
     if (debug) {
@@ -945,7 +900,7 @@ function adoptExternalSession(
   } catch {
     /* start from beginning if stat fails */
   }
-  const agent: AgentState = {
+  const agent = newAgentState({
     id,
     sessionId: path.basename(jsonlFile, '.jsonl'),
     terminalRef: undefined,
@@ -953,24 +908,9 @@ function adoptExternalSession(
     projectDir,
     jsonlFile,
     fileOffset,
-    lineBuffer: '',
-    activeToolIds: new Set(),
-    activeToolStatuses: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    backgroundAgentToolIds: new Set(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    hookDelivered: false,
     lastDataAt: Date.now(),
-    linesProcessed: 0,
-    seenUnknownRecordTypes: new Set(),
     folderName,
-    inputTokens: 0,
-    outputTokens: 0,
-  };
+  });
 
   agents.set(id, agent);
   persistAgents();

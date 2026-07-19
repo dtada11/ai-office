@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import type { StateAdapter } from '../../core/src/adapter.js';
-import { AgentStateStore } from '../../server/src/agentStateStore.js';
+import { AgentStateStore, newAgentState } from '../../server/src/agentStateStore.js';
 import { JSONL_POLL_INTERVAL_MS } from '../../server/src/constants.js';
 import {
   ensureProjectScan,
@@ -16,7 +16,7 @@ import { loadLayout } from '../../server/src/layoutPersistence.js';
 import { CLAUDE_TERMINAL_NAME_PREFIX } from '../../server/src/providers/hook/claude/constants.js';
 import { claudeProvider } from '../../server/src/providers/index.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from '../../server/src/timerManager.js';
-import type { AgentState, PersistedAgent } from '../../server/src/types.js';
+import type { PersistedAgent } from '../../server/src/types.js';
 
 export function getProjectDirPath(cwd?: string): string {
   // Fall back to home directory when no workspace folder is open (common on Linux/macOS
@@ -84,32 +84,15 @@ export async function launchNewTerminal(
   // Create agent immediately (before JSONL file exists)
   const id = nextAgentIdRef.current++;
   const folderName = isMultiRoot && cwd ? path.basename(cwd) : undefined;
-  const agent: AgentState = {
+  const agent = newAgentState({
     id,
     sessionId,
     terminalRef: terminal,
     isExternal: false,
     projectDir,
     jsonlFile: expectedFile,
-    fileOffset: 0,
-    lineBuffer: '',
-    activeToolIds: new Set(),
-    activeToolStatuses: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    backgroundAgentToolIds: new Set(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    lastDataAt: 0,
-    linesProcessed: 0,
-    seenUnknownRecordTypes: new Set(),
     folderName,
-    hookDelivered: false,
-    inputTokens: 0,
-    outputTokens: 0,
-  };
+  });
 
   agents.set(id, agent);
   activeAgentIdRef.current = id;
@@ -328,37 +311,20 @@ export function restoreAgents(
       if (!terminal) continue;
     }
 
-    const agent: AgentState = {
+    const agent = newAgentState({
       id: p.id,
       sessionId: p.sessionId || path.basename(p.jsonlFile, '.jsonl'),
       terminalRef: terminal,
       isExternal,
       projectDir: p.projectDir,
       jsonlFile: p.jsonlFile,
-      fileOffset: 0,
-      lineBuffer: '',
-      activeToolIds: new Set(),
-      activeToolStatuses: new Map(),
-      activeToolNames: new Map(),
-      activeSubagentToolIds: new Map(),
-      activeSubagentToolNames: new Map(),
-      backgroundAgentToolIds: new Set(),
-      isWaiting: false,
-      permissionSent: false,
-      hadToolsInTurn: false,
-      lastDataAt: 0,
-      linesProcessed: 0,
-      seenUnknownRecordTypes: new Set(),
       folderName: p.folderName,
-      hookDelivered: false,
-      inputTokens: 0,
-      outputTokens: 0,
       teamName: p.teamName,
       agentName: p.agentName,
       isTeamLead: p.isTeamLead,
       leadAgentId: p.leadAgentId,
       teamUsesTmux: p.teamUsesTmux,
-    };
+    });
 
     store.set(p.id, agent);
     knownJsonlFiles.add(p.jsonlFile);

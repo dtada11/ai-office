@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StateAdapter } from '../../core/src/adapter.js';
-import { AgentStateStore } from '../src/agentStateStore.js';
+import { AgentStateStore, newAgentState } from '../src/agentStateStore.js';
 import type { AgentState, PersistedAgent } from '../src/types.js';
 
 function createMockAdapter(): StateAdapter {
@@ -16,33 +16,68 @@ function createMockAdapter(): StateAdapter {
 }
 
 function createTestAgent(overrides: Partial<AgentState> = {}): AgentState {
-  return {
+  return newAgentState({
     id: 1,
     sessionId: 'sess-1',
     terminalRef: undefined,
     isExternal: false,
     projectDir: '/test',
     jsonlFile: '/test/session.jsonl',
-    fileOffset: 0,
-    lineBuffer: '',
-    activeToolIds: new Set(),
-    activeToolStatuses: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    backgroundAgentToolIds: new Set(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    lastDataAt: 0,
-    linesProcessed: 0,
-    seenUnknownRecordTypes: new Set(),
-    hookDelivered: false,
-    inputTokens: 0,
-    outputTokens: 0,
     ...overrides,
-  } as AgentState;
+  });
 }
+
+describe('newAgentState', () => {
+  const seed = {
+    id: 1,
+    sessionId: 'sess-1',
+    isExternal: false,
+    projectDir: '/test',
+    jsonlFile: '/test/session.jsonl',
+  };
+
+  it('gives every agent its own collections', () => {
+    const a = newAgentState(seed);
+    const b = newAgentState({ ...seed, id: 2 });
+
+    a.activeToolIds.add('tool-1');
+    a.activeToolStatuses.set('tool-1', 'Reading');
+    a.activeSubagentToolIds.set('parent', new Set(['sub']));
+    a.backgroundAgentToolIds.add('bg-1');
+    a.seenUnknownRecordTypes.add('weird');
+
+    // Sharing one Set/Map across agents would put agent 1's live tools on the
+    // office's every other character.
+    expect(b.activeToolIds.size).toBe(0);
+    expect(b.activeToolStatuses.size).toBe(0);
+    expect(b.activeSubagentToolIds.size).toBe(0);
+    expect(b.backgroundAgentToolIds.size).toBe(0);
+    expect(b.seenUnknownRecordTypes.size).toBe(0);
+  });
+
+  it('starts at rest: nothing read, nothing running, no hook seen', () => {
+    const agent = newAgentState(seed);
+
+    expect(agent.fileOffset).toBe(0);
+    expect(agent.lastDataAt).toBe(0);
+    expect(agent.hookDelivered).toBe(false);
+    expect(agent.isWaiting).toBe(false);
+    expect(agent.permissionSent).toBe(false);
+    expect(agent.hadToolsInTurn).toBe(false);
+    expect(agent.linesProcessed).toBe(0);
+    expect(agent.inputTokens).toBe(0);
+    expect(agent.outputTokens).toBe(0);
+  });
+
+  it('lets a caller override a resting value', () => {
+    // The hooks-only adoption path needs both: no transcript to read, so the
+    // JSONL heuristics must start disarmed.
+    const agent = newAgentState({ ...seed, hookDelivered: true, lastDataAt: 12345 });
+
+    expect(agent.hookDelivered).toBe(true);
+    expect(agent.lastDataAt).toBe(12345);
+  });
+});
 
 describe('AgentStateStore', () => {
   let store: AgentStateStore;

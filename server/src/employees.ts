@@ -19,7 +19,7 @@ import * as path from 'path';
 import type { EmployeeDuty, EmployeeProvider, EmployeeRole } from '../../core/src/messages.js';
 import { normalizeProjectPath } from '../../core/src/normalizeProjectPath.js';
 import type { AgentRuntime } from './agentRuntime.js';
-import type { AgentStateStore } from './agentStateStore.js';
+import { type AgentStateStore, newAgentState } from './agentStateStore.js';
 import { resolveProvider } from './aiProvider.js';
 import {
   ClaudeEmployee,
@@ -149,32 +149,15 @@ const pendingPermissions = new Map<string, PendingPermission>();
 /** A character for an employee we started ourselves. `isExternal: false` keeps the
  *  stale-check (which only despawns external agents) from removing it. */
 function newCharacter(id: number, cwd: string, palette?: number, hueShift?: number): AgentState {
-  return {
+  return newAgentState({
     id,
     sessionId: '',
     isExternal: false,
     projectDir: cwd,
     jsonlFile: '',
-    fileOffset: 0,
-    lineBuffer: '',
-    activeToolIds: new Set(),
-    activeToolStatuses: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    backgroundAgentToolIds: new Set(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    lastDataAt: 0,
-    linesProcessed: 0,
-    seenUnknownRecordTypes: new Set(),
-    hookDelivered: false,
-    inputTokens: 0,
-    outputTokens: 0,
     palette,
     hueShift,
-  };
+  });
 }
 
 function broadcastStaff(store: AgentStateStore): void {
