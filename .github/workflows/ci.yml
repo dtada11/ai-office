@@ -1,0 +1,95 @@
+# 1단계 CI — 로컬에서 초록인 것만 넣는다.
+#
+# e2e는 아직 없다. 실제 VS Code를 띄우는 3-OS 매트릭스라 무겁고, 통과 여부를
+# 확인하기 전에 넣으면 여기 있는 검사들까지 빨간불에 묻힌다. 확인 후 별도 잡으로
+# 추가한다.
+#
+# 각 검사에 `if: always()`가 붙어 있는 이유: 앞 단계가 실패해도 나머지를 계속
+# 돌린다. 하나 고치고 올렸더니 그 다음 게 터지는 걸 반복하지 않으려는 것.
+# 실패한 단계가 하나라도 있으면 잡 전체는 실패로 끝난다.
+
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # npm ci는 package-lock.json 그대로 설치한다(npm install과 달리 lock을
+      # 고쳐 쓰지 않음). 로컬과 같은 버전으로 검사한다는 뜻.
+      - name: Install
+        id: install
+        run: npm ci
+
+      - name: Type Check
+        if: always() && steps.install.outcome == 'success'
+        run: npm run check-types
+
+      - name: Lint
+        if: always() && steps.install.outcome == 'success'
+        run: npm run lint
+
+      - name: Format Check
+        if: always() && steps.install.outcome == 'success'
+        run: npm run format:check
+
+      # e2e 스펙 목록과 e2e/README.md가 어긋났는지 본다. 재생성 후 diff가 나면
+      # 누군가 스펙을 추가하고 인벤토리를 갱신하지 않은 것이다.
+      - name: E2E Inventory Drift
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          npm run e2e:inventory
+          if ! git diff --exit-code e2e/README.md; then
+            echo "::error::e2e/README.md가 스펙 목록과 어긋났습니다. 로컬에서 'npm run e2e:inventory'를 돌리고 결과를 커밋하세요."
+            exit 1
+          fi
+
+      - name: Server Tests
+        if: always() && steps.install.outcome == 'success'
+        run: npm run test:server
+
+      - name: Webview Tests
+        if: always() && steps.install.outcome == 'success'
+        run: npm run test:webview
+
+      # check-types와 lint는 위에서 이미 돌았으므로 `npm run package`(둘을 다시
+      # 실행함) 대신 빌드 단계만 직접 부른다. 여기서 깨지면 원인이 빌드라는 게
+      # 바로 드러난다.
+      - name: Build Extension + CLI
+        if: always() && steps.install.outcome == 'success'
+        run: node esbuild.js --production
+
+      - name: Build Webview
+        if: always() && steps.install.outcome == 'success'
+        run: npm run build:webview

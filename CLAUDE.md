@@ -544,9 +544,24 @@ The webview Vite dev server is **not** included in `npm run watch` — it has to
 
 ### CI
 
-Single workflow runs (in order): install, lint, `e2e:inventory` + drift check, `check-types`, `test:server`, `test:webview`, `e2e` (3-OS x 3-shard matrix: Linux, macOS, Windows), `package`, Vercel preview deploy (gated on secrets; gracefully skips on forks, non-blocking on failure).
+`.github/workflows/ci.yml` — one job on `ubuntu-latest`, Node from `.nvmrc`, triggered on
+push to `main` and on PRs (`.md`/`LICENSE`-only changes skipped). Steps: `npm ci`,
+`check-types`, `lint`, `format:check`, `e2e:inventory` + drift check, `test:server`,
+`test:webview`, then the two builds (`node esbuild.js --production`, `build:webview`).
 
-The drift check keeps `e2e/README.md` in sync with the spec list.
+Every check carries `if: always()` so one failure doesn't hide the rest — all steps run,
+and the job fails if any did. The drift check keeps `e2e/README.md` in sync with the
+spec list.
+
+**e2e is deliberately not wired up yet.** The upstream workflow ran it as a 3-OS x 3-shard
+matrix against a real VS Code Electron instance; that was dropped along with the rest of
+upstream's CI on 2026-07-13 (commit `92f9182`) and has not been re-verified since. Adding
+it before confirming it passes would bury the checks above in red. Verify locally
+(`npm run e2e`) first, then add it as a separate job.
+
+Two upstream steps are gone for good: `asyncapi:validate` and the generated-messages drift
+check both referenced `core/asyncapi.yaml`, which was removed 2026-07-19 (see "Wire
+Protocol"). Restoring the old workflow wholesale would fail on them.
 
 ## TypeScript Constraints
 
