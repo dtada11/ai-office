@@ -15,6 +15,7 @@ vi.mock('os', async () => {
 
 // Must import AFTER mock setup
 const { PixelAgentsServer } = await import('../src/server.js');
+const { AgentStateStore } = await import('../src/agentStateStore.js');
 
 async function postHook(
   port: number,
@@ -29,6 +30,43 @@ async function postHook(
       Authorization: `Bearer ${token}`,
     },
     body,
+  });
+}
+
+/**
+ * Open /ws and report how the server reacted: the close code if it hung up, or
+ * 'stayed-open' if the connection survived the grace window.
+ *
+ * Uses Node's built-in WebSocket (22+) with its non-standard `headers` option.
+ * The browser WebSocket API forbids setting Origin and Authorization, and those
+ * two headers are precisely what the route's guards read — so a spec-compliant
+ * client cannot exercise this at all. That option is why no `ws` dependency is
+ * needed here.
+ *
+ * The guards run after the HTTP upgrade completes, so a rejected connection
+ * still fires onopen before onclose. Waiting for the close (rather than
+ * treating onopen as success) is what makes the distinction reliable.
+ */
+async function wsCloseCode(
+  port: number,
+  headers: Record<string, string>,
+): Promise<number | 'stayed-open'> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers,
+    } as unknown as string[]);
+    const grace = setTimeout(() => {
+      ws.close();
+      resolve('stayed-open');
+    }, 750);
+    ws.onclose = (event) => {
+      clearTimeout(grace);
+      resolve(event.code);
+    };
+    // A refused upgrade surfaces as an error; the close handler above still runs.
+    ws.onerror = () => {
+      /* ignore */
+    };
   });
 }
 
@@ -254,5 +292,48 @@ describe('PixelAgentsServer', () => {
 
     expect(res.status).toBe(200);
     expect(body.error).toBe(false);
+  });
+
+  // 19-21. /ws guards are actually wired to the route.
+  //
+  // httpServer.test.ts already covers isAllowedWsOrigin/isAllowedHost as pure
+  // functions, but a passing predicate proves nothing about whether the route
+  // calls it. Delete the check inside registerWebSocketRoute and every one of
+  // those unit tests still goes green. These three connect for real.
+  //
+  // PixelAgentsServer defaults to embedded:true (server.ts), so the Bearer
+  // branch is live here — that is the mode where token auth exists at all.
+  // Standalone (cli.ts passes embedded:false) deliberately has no token check;
+  // see the README's "다른 기기에서 접속하기" section.
+  it('/ws closes a disallowed Origin with 4003', async () => {
+    const config = await server.start();
+    const code = await wsCloseCode(config.port, {
+      Origin: 'http://evil.com',
+      Authorization: `Bearer ${config.token}`,
+    });
+    expect(code).toBe(4003);
+  });
+
+  it('/ws closes a wrong Bearer token with 4001 in embedded mode', async () => {
+    const config = await server.start();
+    const code = await wsCloseCode(config.port, {
+      Origin: 'http://localhost:5173',
+      Authorization: 'Bearer not-the-real-token',
+    });
+    expect(code).toBe(4001);
+  });
+
+  // The control case. Without it, a guard broken to reject *everything* would
+  // still satisfy both tests above. Needs a real store: the accepted path runs
+  // on to `store.on(...)`, and the other tests get away with the bare server
+  // only because they are closed before reaching that line. (Not a product
+  // bug — PixelAgentsViewProvider and cli.ts both pass a store.)
+  it('/ws accepts a loopback Origin with the right token', async () => {
+    const config = await server.start({ store: new AgentStateStore() });
+    const code = await wsCloseCode(config.port, {
+      Origin: 'http://localhost:5173',
+      Authorization: `Bearer ${config.token}`,
+    });
+    expect(code).toBe('stayed-open');
   });
 });

@@ -281,6 +281,25 @@ Fastify v5 with `@fastify/cors`, `@fastify/websocket`, and (in standalone) `@fas
 
 Server discovery written to `~/.pixel-agents/server.json` with `{ port, pid, authToken }`. Multi-window safe: a second server detects an existing `server.json` and reuses or replaces it based on PID liveness.
 
+**`/ws` auth is asymmetric, and no first-party client sends a token.** The Bearer check in
+`registerWebSocketRoute` sits inside `if (options.embedded)` — but embedded mode is VS Code,
+where the webview talks over `PostMessageTransport`, not WebSocket (`transport/index.ts`), and
+nothing under `adapters/vscode/` opens `/ws` at all. Standalone is the mode that actually uses
+`/ws`, and there `embedded: false` skips the token check entirely; the browser client sends no
+token either (`new WebSocket(this.url)`, no header, no localStorage). So the token branch guards
+only third-party callers in a mode our own client doesn't use, and the mode our client does use
+has just the Origin check — which `isAllowedWsOrigin` passes when the header is absent, i.e. for
+any non-browser caller. That is the gap the README's "다른 기기에서 접속하기" section describes;
+closing it means token-on-`/ws`, which needs a query param or subprotocol since the browser
+WebSocket API cannot set headers.
+
+Do not confuse this token with the AI credentials the onboarding wizard collects — different
+thing entirely, covered by `setupCheck` / `clientMessageHandlerOnboarding` / `aiProvider`.
+
+`server.test.ts` connects to `/ws` for real (Node 22+ built-in `WebSocket`, whose non-standard
+`headers` option is what makes Origin/Authorization settable) and asserts 4003 / 4001 / accepted.
+The pure-function tests in `httpServer.test.ts` cannot prove the route actually calls the guards.
+
 ### ClientMessageHandler
 
 Single dispatch point for `ClientMessage`. Each variant calls into `AgentRuntime`, `AgentStateStore`, `LayoutPersistence`, or `FileStateAdapter`, or delegates to host-specific callbacks (`onLaunchAgent`, `onOpenSessionsFolder`, `onExportLayout`, `onImportLayout`, `onSetHooksEnabled`). Both surfaces wire the same handler.
@@ -439,7 +458,7 @@ Three tiers, each with its own framework.
 | `claude.test.ts`               | `normalizeHookEvent` per Claude event, file fallback                |
 | `claudeHookInstaller.test.ts`  | Atomic install/uninstall                                            |
 | `claude-hook.test.ts`          | Spawned hook script integration (needs `dist/hooks/claude-hook.js`) |
-| `server.test.ts`               | HTTP lifecycle, auth, `/ws`, broadcast                              |
+| `server.test.ts`               | HTTP lifecycle, auth, list-dir, `/ws` guard wiring                  |
 
 Run: `npm run test:server` (or `npm test` for all).
 
