@@ -3,7 +3,12 @@ services:
     image: pixel-agents:latest
     container_name: pixel-agents
     ports:
-      - "3100:3100"
+      # 호스트의 loopback에만 공개한다. 앞의 "127.0.0.1:"이 없으면 도커는
+      # 포트를 호스트의 모든 인터페이스에 여는데, standalone /ws는 Bearer 토큰을
+      # 요구하지 않으므로(embedded 모드 전용 검사) 같은 네트워크의 누구나
+      # 인증 없이 붙을 수 있게 된다. 원격 접속은 SSH 터널로 한다:
+      #   ssh -L 3100:localhost:3100 user@server
+      - "127.0.0.1:3100:3100"
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
