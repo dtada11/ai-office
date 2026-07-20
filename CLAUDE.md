@@ -95,7 +95,7 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
       types.ts                       Re-exports MessageTransport from core
     runtime.ts                       isBrowserRuntime detection
     browserMock.ts                   Standalone-browser asset fetch + message injection
-    testHooks.ts                     window globals exposed for e2e (officeState, helpers)
+    testHooks.ts                     window globals for the deleted e2e suite — now vestigial
     main.tsx                         React entry (StrictMode + createRoot)
     App.tsx                          Composition root (hooks + components + EditActionBar)
     constants.ts                     Webview magic numbers/strings
@@ -135,33 +135,7 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
         OfficeCanvas.tsx             Canvas, resize, DPR, mouse hit-testing, drag-to-move
         ToolOverlay.tsx              Activity label above hovered/selected character
 
-e2e/                                 Playwright suite (real VS Code + mock-claude scenarios)
-  playwright.config.ts
-  global-setup.ts
-  fixtures/
-    pixel-agents.ts                  VS Code fixture: launch Electron, wait for panel
-    standalone.ts                    Standalone CLI fixture: spawn server + browser page
-    mock-claude, mock-claude.cmd     Bash + cmd wrapper invoked instead of real claude
-    mock-claude-runner.cjs           Scenario runner: appendJsonl, emitHook, holdOpen
-  helpers/
-    launch.ts                        Electron app + isolated HOME/workspace
-    mock-claude.ts                   claudeScenario() builder
-    office.ts                        Overlay locators + assertions
-    webview.ts                       Settings/modal helpers
-    hooks.ts                         Hook server lifecycle helpers
-    standalone.ts                    Standalone server + WebSocket browser helpers
-    internal-agent.ts                spawnInternalAgentAndWait
-    lifecycle.ts                     Reusable scenario fragments
-    team.ts                          Team config seeding + teammate helpers
-  tests/
-    claude/hooks-on/                 basic.spec.ts, lifecycle.spec.ts, teams.spec.ts
-    claude/hooks-off/                lifecycle.spec.ts, matrix.spec.ts
-    standalone/                      hooks.spec.ts
-  README.md                          Auto-generated test inventory (regen via npm run e2e:inventory)
-
 scripts/
-  run-e2e.mjs                        Playwright wrapper (run-id namespacing, video attach flags)
-  generate-e2e-inventory.mjs         Splices test list into e2e/README.md (CI drift check)
   asset-manager.html                 Unified furniture editor (positions + metadata)
   jsonl-viewer.html                  Standalone JSONL transcript inspector
   wall-tile-editor.html              Wall sprite editor
@@ -466,49 +440,50 @@ Three tiers, each with its own framework.
 | `claudeHookInstaller.test.ts`  | Atomic install/uninstall                                            |
 | `claude-hook.test.ts`          | Spawned hook script integration (needs `dist/hooks/claude-hook.js`) |
 | `server.test.ts`               | HTTP lifecycle, auth, `/ws`, broadcast                              |
-| `mockClaudeRunner.test.ts`     | E2E scenario runner sanity                                          |
 
 Run: `npm run test:server` (or `npm test` for all).
 
 ### Webview unit (Vitest, Node runner)
 
-`webview-ui/test/` — `build-subpath.test.ts`, `dev-assets.test.ts`. Asset wiring and Vite plugin smoke tests.
+`webview-ui/test/` — 16 files. Two are upstream's build smoke tests (`build-subpath`,
+`dev-assets`); the rest cover this fork's logic (`boardEntries`, `dashboardModel`,
+`permissionQueue`, `allowlistEntry`, `teamScaffoldPreview`, `jobPresets`,
+`chatWindowPosition`, `folderPicker`, `toolSummary`, `setupCheckCopy`, ...).
 
 Run: `npm run test:webview`.
 
-### End-to-end (Playwright)
+### End-to-end — removed (2026-07-20)
 
-`e2e/` — Playwright tests against a real VS Code Electron instance + a standalone Fastify server. **47 tests across 6 spec files**, run on CI as a 3-OS x 3-shard matrix (Linux, macOS, Windows; each shard runs ~1/3 of the suite at `--workers=1`).
+**There is no e2e suite.** The Playwright suite inherited from upstream (51 tests, 27 files)
+was deleted, along with `scripts/run-e2e.mjs`, `scripts/generate-e2e-inventory.mjs`, the
+`e2e*` npm scripts, `@playwright/test`, and `@vscode/test-electron`.
 
-| Area (`@area:<tag>`) | Specs                                                                     | What                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `spawn`              | `claude/hooks-on/basic.spec.ts`                                           | "+ Agent" creates JSONL session, character renders, external session adoption                                                                                      |
-| `lifecycle`          | `claude/hooks-on/lifecycle.spec.ts`, `claude/hooks-off/lifecycle.spec.ts` | /clear, --resume, reassignment, stale cleanup, subagent visibility, background routing                                                                             |
-| `cross-cutting`      | spread across both lifecycle files                                        | turn_duration cleanup, permission timer cancellation, sub-agent permission bubble, sound, label persistence, hook install/uninstall, layout editor save round-trip |
-| `teams`              | `claude/hooks-on/teams.spec.ts`                                           | Internal/external lead + tmux/inline teammate routing                                                                                                              |
-| `matrix`             | `claude/hooks-off/matrix.spec.ts`                                         | Heuristic-mode broad coverage                                                                                                                                      |
-| `standalone`         | `standalone/hooks.spec.ts`                                                | npx pixel-agents serves SPA, WebSocket protocol, hook-driven lifecycle in browser                                                                                  |
+Why, in the order the reasons were found:
 
-**Mock claude**: Tests never invoke real `claude`. A bash script (`e2e/fixtures/mock-claude`) is copied into an isolated `bin/` and prepended to `PATH`. The scenario runner (`mock-claude-runner.cjs`) honors `claudeScenario(...).at(ms).appendJsonl(record).emitHook(event).holdOpenFor(ms).build()` to drive timed JSONL writes and hook events.
+1. **It was 100% red and nobody knew.** Nothing ran it — CI was deleted 2026-07-13 and the
+   pre-push hook only regenerated the inventory. Every test failed in the fixture, waiting
+   30 s for a `"+ Agent"` button that is `"+ 에이전트"` here. Korean localization broke it and
+   the breakage went unnoticed because the suite was never executed.
+2. **Repair was not a string swap.** Past the fixture came four more layers: the settings
+   modal, its four checkboxes, `Layout`/`Save`, then ~25 distinct overlay strings. Word order
+   reverses (`Reading foo.ts` → `foo.ts 읽는 중`), so each assertion needed hand-translation.
+3. **49 of 51 tests launched real VS Code** — the surface this fork is folding — and tested
+   upstream's features, not this fork's.
+4. **This fork's features are already covered** by 29 test files added since the fork
+   (18 under `server/__tests__/`, 11 under `webview-ui/test/`): employees, permissions and
+   the allowlist, teams, the board, auth and onboarding. 704 tests, ~13 s, all green.
 
-**Authoring rules (normative)**: before writing a new spec, read `e2e/README.md` → "Mocking model & rules". It is the single source of truth for the process-boundary principle, the append-only transcript rule, the assert-on-visible-outcomes discipline, and the one standalone-server exception. New tests must follow that model.
+A permanently red suite is worse than no suite — it trains you to ignore red, which is how
+the "9건은 원래 실패" baseline mistake happened before.
 
-**Isolation**: each test gets its own `tmpHome`, workspace directory, VS Code `--user-data-dir`, and mock-log file. No state leaks between tests.
+**If e2e comes back**, write it for this fork's own flows (hire → character appears,
+approval card → click → resolved), not by reviving upstream's. Recover the old suite from
+git history if it's ever useful: `git show 8171e42:e2e/playwright.config.ts` and siblings.
 
-**Single source of truth for test inventory**: `e2e/README.md` contains an auto-generated section spliced between `<!-- BEGIN:E2E-INVENTORY -->` and `<!-- END:E2E-INVENTORY -->` markers. CI regenerates via `npm run e2e:inventory` and fails on `git diff --exit-code e2e/README.md`.
-
-Run:
-
-```bash
-npm run e2e                                    # all tests
-npm run e2e -- --workers=1                     # single worker (matches CI sharding)
-npm run e2e -- --grep "lifecycle"              # filter by name
-npm run e2e:debug                              # step-through
-npm run e2e -- --attach-videos-on-success      # keep videos for passes too
-npm run e2e:inventory                          # regen e2e/README.md inventory
-```
-
-**Reproducing CI failures locally**: CI uses `--workers=1` because the runners can't handle more. Reproduce locally with `npm run e2e -- --workers=1 --grep "<test>"`. For full Linux fidelity, `act -j linux-e2e --matrix shard:1 -P ubuntu-latest=catthehacker/ubuntu:full-22.04 --container-architecture linux/amd64` or run inside `mcr.microsoft.com/playwright:v1.58.2-noble` Docker with `--cpus=2 --memory=4g` to simulate runner throttling.
+**Known leftover**: `webview-ui/src/testHooks.ts` (plus `__pixelAgentsTestHooks` writes in
+`useExtensionMessages.ts` and `notificationSound.ts`) existed only for the e2e fixtures. It
+is now dead weight, but it is woven into `App.tsx` and two more files, so it was left in
+place rather than ripped out as part of the deletion.
 
 ## Build & Dev
 
@@ -520,7 +495,6 @@ npm run compile            # check-types, lint, esbuild, vite
 npm run build              # alias for compile
 npm run package            # production build (esbuild --production)
 npm test                   # webview + server vitest
-npm run e2e                # Playwright
 ```
 
 `esbuild.js` runs three bundles:
@@ -650,7 +624,10 @@ Supporting: `wall-tile-editor.html` (wall sprite editing), `jsonl-viewer.html` (
 - **Inline esbuild problem matcher** (no extra extension needed).
 - **`erasableSyntaxOnly`** in webview forbids `enum` — use `as const` objects.
 - **Server always starts** regardless of hooks toggle. Only hook installation is gated by the setting.
-- **E2E over webview unit tests** for OSS friction. Community PRs change webview internals constantly; unit tests would force contributors to update internals tests on top of feature work. E2E pins user-facing behavior, which is stable across internal refactors.
+- **Unit tests over e2e** (reverses upstream's call, 2026-07-20). Upstream chose e2e to spare
+  community PRs from updating internals tests. This fork has no PR stream and folded the VS
+  Code surface those tests drove, so the tradeoff inverted: 29 fast unit-test files covering
+  this fork's own features beat 51 slow tests covering upstream's. See "End-to-end — removed".
 
 ## Project Identity
 

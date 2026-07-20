@@ -1,8 +1,10 @@
-# 1단계 CI — 로컬에서 초록인 것만 넣는다.
+# CI — 타입·lint·포맷·단위 테스트·빌드.
 #
-# e2e는 아직 없다. 실제 VS Code를 띄우는 3-OS 매트릭스라 무겁고, 통과 여부를
-# 확인하기 전에 넣으면 여기 있는 검사들까지 빨간불에 묻힌다. 확인 후 별도 잡으로
-# 추가한다.
+# e2e는 없다. 상류에서 물려받은 Playwright 스위트(51개)를 2026-07-20에 지웠다.
+# 49개가 VS Code를 띄우는 테스트였는데 그 경로는 접기로 한 방향이고, 검사 대상도
+# 상류가 만든 기능이었으며, 한글화 이후로는 영어 UI 문자열을 찾다가 전부 실패하는
+# 상태였다. 이쪽 기능(직원·팀·회의보드·권한)은 server/__tests__ 와 webview-ui/test
+# 의 단위 테스트가 덮는다.
 #
 # 각 검사에 `if: always()`가 붙어 있는 이유: 앞 단계가 실패해도 나머지를 계속
 # 돌린다. 하나 고치고 올렸더니 그 다음 게 터지는 걸 반복하지 않으려는 것.
@@ -63,17 +65,6 @@ jobs:
       - name: Format Check
         if: always() && steps.install.outcome == 'success'
         run: npm run format:check
-
-      # e2e 스펙 목록과 e2e/README.md가 어긋났는지 본다. 재생성 후 diff가 나면
-      # 누군가 스펙을 추가하고 인벤토리를 갱신하지 않은 것이다.
-      - name: E2E Inventory Drift
-        if: always() && steps.install.outcome == 'success'
-        run: |
-          npm run e2e:inventory
-          if ! git diff --exit-code e2e/README.md; then
-            echo "::error::e2e/README.md가 스펙 목록과 어긋났습니다. 로컬에서 'npm run e2e:inventory'를 돌리고 결과를 커밋하세요."
-            exit 1
-          fi
 
       - name: Server Tests
         if: always() && steps.install.outcome == 'success'

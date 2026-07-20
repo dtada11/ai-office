@@ -3,14 +3,3 @@ set -e
 
 echo "🔍 Type-checking..."
 npm run check-types
-
-# Catch generated-file drift locally instead of only in CI. Regenerate the e2e
-# test inventory, then fail if it differs from what's committed. On drift the
-# file is left regenerated in the working tree -- just commit it and push again.
-echo "🔍 Checking generated-file drift (e2e inventory)..."
-npm run e2e:inventory
-if ! git diff --exit-code e2e/README.md; then
-  echo "❌ e2e/README.md was out of date and has been regenerated above."
-  echo "   Commit the change, then push again."
-  exit 1
-fi

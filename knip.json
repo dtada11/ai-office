@@ -17,13 +17,11 @@
   "workspaces": {
     ".": {
       "entry": [
-        "adapters/vscode/extension.ts",
-        "e2e/**/*.ts"
+        "adapters/vscode/extension.ts"
       ],
       "project": [
         "adapters/**/*.ts",
-        "core/src/**/*.ts",
-        "e2e/**/*.ts"
+        "core/src/**/*.ts"
       ]
     },
     "server": {

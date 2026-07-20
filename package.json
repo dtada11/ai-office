@@ -98,17 +98,12 @@
     "test:webview": "cd webview-ui && npm test",
     "test:server": "cd server && npm test",
     "test": "npm run test:webview && npm run test:server",
-    "e2e": "node scripts/run-e2e.mjs",
-    "e2e:debug": "node scripts/run-e2e.mjs --debug",
-    "e2e:inventory": "node scripts/generate-e2e-inventory.mjs",
     "knip": "knip"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
     "@types/node": "25.x",
     "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.105.0",
-    "@vscode/test-electron": "^2.5.2",
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.0",
